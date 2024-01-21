@@ -1,5 +1,5 @@
 {
-  description = "weiss-xmonad";
+  description = "weissXmonad";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/release-23.11";
@@ -13,11 +13,11 @@
         haskell = prev.haskell // {
           packageOverrides = hfinal: hprev:
             prev.haskell.packageOverrides hfinal hprev // {
-              weiss-xmonad = hfinal.callCabal2nix "weiss-xmonad" ./. { };
+              weissXmonad = hfinal.callCabal2nix "weissXmonad" ./. { };
             };
         };
-        weiss-xmonad = final.haskell.lib.compose.justStaticExecutables
-          final.haskellPackages.weiss-xmonad;
+        weissXmonad = final.haskell.lib.compose.justStaticExecutables
+          final.haskellPackages.weissXmonad;
       };
       perSystem = system:
         let
@@ -28,12 +28,12 @@
           ghcVersion = "ghc948";
           hspkgs = pkgs.haskell.packages.${ghcVersion};
           devShells.shellFor = hspkgs.shellFor {
-            packages = p: [ p.weiss-xmonad ];
+            packages = p: [ p.weissXmonad ];
             withHoogle = true;
           };
         in {
           devShells.default = pkgs.devshell.mkShell {
-            name = "weiss-xmonad";
+            name = "weissXmonad";
             imports = [ (pkgs.devshell.importTOML ./devshell.toml) ];
             # packages = [ pkgs.hpack ];
             packagesFrom = [ devShells.shellFor ];
@@ -56,8 +56,8 @@
             packages = [ hspkgs.hlint hspkgs.fourmolu hspkgs.cabal-fmt ];
           };
           packages = rec {
-            default = weiss-xmonad;
-            weiss-xmonad = pkgs.weiss-xmonad;
+            default = weissXmonad;
+            weissXmonad = pkgs.weissXmonad;
           };
         };
     in { inherit overlay; } // flake-utils.lib.eachDefaultSystem perSystem;

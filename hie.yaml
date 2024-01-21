@@ -4,13 +4,13 @@ cradle:
     #   config: {cradle: {none: }}
 
     - path: "src"
-      config: {cradle: {cabal: {component: "lib:weiss-xmonad"}}}
+      config: {cradle: {cabal: {component: "lib:weissXmonad"}}}
 
     - path: "app"
-      config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-exe"}}}
+      config: {cradle: {cabal: {component: "weissXmonad:weissXmonad-exe"}}}
 
     - path: "test"
-      config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-test"}}}
+      config: {cradle: {cabal: {component: "weissXmonad:weissXmonad-test"}}}
 
     - path: "bench"
-      config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-bench"}}}
+      config: {cradle: {cabal: {component: "weissXmonad:weissXmonad-bench"}}}
