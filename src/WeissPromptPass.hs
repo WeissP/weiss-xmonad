@@ -1,39 +1,40 @@
-module MyPromptPass where
+module WeissPromptPass where
 
 import System.Directory (getHomeDirectory)
 import System.FilePath (combine, dropExtension, takeExtension)
 import System.Posix.Env (getEnv)
 import XMonad.Core
-import XMonad.Prompt
-  ( XPConfig,
-    XPrompt,
-    commandToComplete,
-    getNextCompletion,
-    mkXPrompt,
-    nextCompletion,
-    searchPredicate,
-    showXPrompt,
-  )
+import XMonad.Prompt (
+  XPConfig,
+  XPrompt,
+  commandToComplete,
+  getNextCompletion,
+  mkXPrompt,
+  nextCompletion,
+  searchPredicate,
+  showXPrompt,
+ )
 import XMonad.Util.Run (runProcessWithInput)
 
--- $usage
--- You can use this module with the following in your @~\/.xmonad\/xmonad.hs@:
---
--- > import XMonad.Prompt.Pass
---
--- Then add a keybinding for 'passPrompt', 'passGeneratePrompt',
--- 'passRemovePrompt', 'passEditPrompt' or 'passTypePrompt':
---
--- >   , ((modMask , xK_p)                              , passPrompt xpconfig)
--- >   , ((modMask .|. controlMask, xK_p)               , passGeneratePrompt xpconfig)
--- >   , ((modMask .|. shiftMask, xK_p)                 , passEditPrompt xpconfig)
--- >   , ((modMask .|. controlMask  .|. shiftMask, xK_p), passRemovePrompt xpconfig)
---
--- For detailed instructions on:
---
--- - editing your key bindings, see "XMonad.Doc.Extending#Editing_key_bindings".
---
--- - how to setup the password store, see <http://git.zx2c4.com/password-store/about/>
+{- $usage
+You can use this module with the following in your @~\/.xmonad\/xmonad.hs@:
+
+> import XMonad.Prompt.Pass
+
+Then add a keybinding for 'passPrompt', 'passGeneratePrompt',
+'passRemovePrompt', 'passEditPrompt' or 'passTypePrompt':
+
+>   , ((modMask , xK_p)                              , passPrompt xpconfig)
+>   , ((modMask .|. controlMask, xK_p)               , passGeneratePrompt xpconfig)
+>   , ((modMask .|. shiftMask, xK_p)                 , passEditPrompt xpconfig)
+>   , ((modMask .|. controlMask  .|. shiftMask, xK_p), passRemovePrompt xpconfig)
+
+For detailed instructions on:
+
+- editing your key bindings, see "XMonad.Doc.Extending#Editing_key_bindings".
+
+- how to setup the password store, see <http://git.zx2c4.com/password-store/about/>
+-}
 
 type Predicate = String -> String -> Bool
 
@@ -53,9 +54,10 @@ instance XPrompt Pass where
 passwordStoreFolderDefault :: String -> String
 passwordStoreFolderDefault home = combine home ".password-store"
 
--- | Compute the password store's location.
--- Use the PASSWORD_STORE_DIR environment variable to set the password store.
--- If empty, return the password store located in user's home.
+{- | Compute the password store's location.
+Use the PASSWORD_STORE_DIR environment variable to set the password store.
+If empty, return the password store located in user's home.
+-}
 passwordStoreFolder :: IO String
 passwordStoreFolder =
   getEnv "PASSWORD_STORE_DIR" >>= computePasswordStoreDir
@@ -80,30 +82,35 @@ passPrompt = mkPassPrompt "Select password" selectPassword
 passOTPPrompt :: XPConfig -> X ()
 passOTPPrompt = mkPassPrompt "Select OTP" selectOTP
 
--- | A prompt to generate a password for a given entry.
--- This can be used to override an already stored entry.
--- (Beware that no confirmation is asked)
+{- | A prompt to generate a password for a given entry.
+This can be used to override an already stored entry.
+(Beware that no confirmation is asked)
+-}
 passGeneratePrompt :: XPConfig -> X ()
 passGeneratePrompt = mkPassPrompt "Generate password" generatePassword
 
--- | A prompt to generate a password for a given entry and immediately copy it
--- to the clipboard.  This can be used to override an already stored entry.
--- (Beware that no confirmation is asked)
+{- | A prompt to generate a password for a given entry and immediately copy it
+to the clipboard.  This can be used to override an already stored entry.
+(Beware that no confirmation is asked)
+-}
 passGenerateAndCopyPrompt :: XPConfig -> X ()
 passGenerateAndCopyPrompt = mkPassPrompt "Generate and copy password" generateAndCopyPassword
 
--- | A prompt to remove a password for a given entry.
--- (Beware that no confirmation is asked)
+{- | A prompt to remove a password for a given entry.
+(Beware that no confirmation is asked)
+-}
 passRemovePrompt :: XPConfig -> X ()
 passRemovePrompt = mkPassPrompt "Remove password" removePassword
 
--- | A prompt to type in a password for a given entry.
--- This doesn't touch the clipboard.
+{- | A prompt to type in a password for a given entry.
+This doesn't touch the clipboard.
+-}
 passTypePrompt :: XPConfig -> X ()
 passTypePrompt = mkPassPrompt "Type password" typePassword
 
--- | A prompt to edit a given entry.
--- This doesn't touch the clipboard.
+{- | A prompt to edit a given entry.
+This doesn't touch the clipboard.
+-}
 passEditPrompt :: XPConfig -> X ()
 passEditPrompt = mkPassPrompt "Edit password" editPassword
 
@@ -115,14 +122,16 @@ selectPassword passLabel = spawn $ "pass --clip \"" ++ escapeQuote passLabel ++ 
 selectOTP :: String -> X ()
 selectOTP passLabel = spawn $ "pass otp --clip \"" ++ escapeQuote passLabel ++ "\""
 
--- | Generate a 30 characters password for a given entry.
--- If the entry already exists, it is updated with a new password.
+{- | Generate a 30 characters password for a given entry.
+If the entry already exists, it is updated with a new password.
+-}
 generatePassword :: String -> X ()
 generatePassword passLabel = spawn $ "pass generate --force \"" ++ escapeQuote passLabel ++ "\" 30"
 
--- | Generate a 30 characters password for a given entry.
--- If the entry already exists, it is updated with a new password.
--- After generating the password, it is copied to the clipboard.
+{- | Generate a 30 characters password for a given entry.
+If the entry already exists, it is updated with a new password.
+After generating the password, it is copied to the clipboard.
+-}
 generateAndCopyPassword :: String -> X ()
 generateAndCopyPassword passLabel = spawn $ "pass generate --force -c \"" ++ escapeQuote passLabel ++ "\" 30"
 
@@ -155,14 +164,14 @@ getPasswords passwordStoreDir = do
   files <-
     runProcessWithInput
       "find"
-      [ "-L", -- Traverse symlinks
-        passwordStoreDir,
-        "-type",
-        "f",
-        "-name",
-        "*.gpg",
-        "-printf",
-        "%P\n"
+      [ "-L" -- Traverse symlinks
+      , passwordStoreDir
+      , "-type"
+      , "f"
+      , "-name"
+      , "*.gpg"
+      , "-printf"
+      , "%P\n"
       ]
       []
   return . map removeGpgExtension $ lines files

@@ -1,7 +1,7 @@
-module MyWorkspace (myWorkspaces, workspaceKeys) where
+module WeissWorkspace (myWorkspaces, workspaceKeys) where
 
-import MyNamedScratchpad
-import MyWindowOperations
+import WeissNamedScratchpad
+import WeissWindowOperations
 import XMonad
 import qualified XMonad.StackSet as W
 import qualified XMonad.Util.ExtensibleState as XS
@@ -14,7 +14,7 @@ type SubWorkspace = Int
 data Workspace = Id String | SubWorkspace Int deriving (Show)
 
 instance ExtensionClass RootWorkspace where
-    initialValue = RootWorkspace 1
+  initialValue = RootWorkspace 1
 
 rootWorkspaces :: [RootWorkspace]
 rootWorkspaces = map RootWorkspace [1 .. 9]
@@ -52,15 +52,15 @@ switchRootWorkspace r = XS.put r >> switchWorkspace (SubWorkspace 1)
 
 workspaceKeys :: [(String, X ())]
 workspaceKeys =
-    let subWorkspaceKeys = ["m", ",", ".", "j", "k", "l", "u", "i", "o"]
-        subWorkspacePairs = zip subWorkspaceKeys (map SubWorkspace subWorkspaces)
-        commonWorkspacePairs = zip ["<Down>", "h", "n", "<Up>", "-", "y", "0"] (map Id commonWorkspaces)
-     in [ (keyPrefix ++ " " ++ k, fun subWorkspace)
-        | (k, subWorkspace) <- commonWorkspacePairs ++ subWorkspacePairs
-        , (keyPrefix, fun) <-
-            [ ("<XF86Launch7>", switchWorkspace)
-            , ("<XF86Launch7> <Space>", shiftSwitchWorkspace)
-            , ("<XF86Launch7> <Escape>", shiftWorkspace)
-            ]
-        ]
-            ++ zip (map ("<XF86Launch7> <XF86Launch7> " ++) subWorkspaceKeys) (map switchRootWorkspace rootWorkspaces)
+  let subWorkspaceKeys = ["m", ",", ".", "j", "k", "l", "u", "i", "o"]
+      subWorkspacePairs = zip subWorkspaceKeys (map SubWorkspace subWorkspaces)
+      commonWorkspacePairs = zip ["<Down>", "h", "n", "<Up>", "-", "y", "0"] (map Id commonWorkspaces)
+   in [ (keyPrefix ++ " " ++ k, fun subWorkspace)
+      | (k, subWorkspace) <- commonWorkspacePairs ++ subWorkspacePairs
+      , (keyPrefix, fun) <-
+          [ ("<XF86Launch7>", switchWorkspace)
+          , ("<XF86Launch7> <Space>", shiftSwitchWorkspace)
+          , ("<XF86Launch7> <Escape>", shiftWorkspace)
+          ]
+      ]
+        ++ zip (map ("<XF86Launch7> <XF86Launch7> " ++) subWorkspaceKeys) (map switchRootWorkspace rootWorkspaces)

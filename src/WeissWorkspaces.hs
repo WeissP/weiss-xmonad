@@ -1,7 +1,7 @@
-module MyWorkspaces where
+module WeissWorkspaces where
 
-import MyNamedScratchpad
-import MyWindowOperations
+import WeissNamedScratchpad
+import WeissWindowOperations
 import XMonad
 import qualified XMonad.StackSet as W
 import qualified XMonad.Util.ExtensibleState as XS

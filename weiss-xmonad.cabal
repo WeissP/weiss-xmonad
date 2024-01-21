@@ -1,5 +1,5 @@
 cabal-version:   2.4
-name:            weissXmonad
+name:            WeissXmonad
 version:         0
 license:         BSD-3-Clause
 build-type:      Simple
@@ -15,10 +15,10 @@ extra-doc-files:
 -- category:
 -- description:     description
 -- synopsis:        one-line synopsis
--- homepage:        https://github.com/FIXME/weissXmonad#readme
+-- homepage:        https://github.com/FIXME/WeissXmonad#readme
 -- source-repository head
 --   type:     git
---   location: git://github.com/FIXME/weissXmonad.git
+--   location: git://github.com/FIXME/WeissXmonad.git
 
 common common-options
   build-depends:      base >=4.9 && <5
@@ -77,13 +77,13 @@ library
   import:          common-options
   hs-source-dirs:  src
   exposed-modules:
-    MyLogger
-    MyNamedScratchpad
-    MyPromptPass
-    MyWindowOperations
-    MyWorkspace
-    MyXmobar
-    MyXMonad
+    WeissLogger
+    WeissNamedScratchpad
+    WeissPromptPass
+    WeissWindowOperations
+    WeissWorkspace
+    WeissXmobar
+    WeissXMonad
 
   build-depends:
     , base
