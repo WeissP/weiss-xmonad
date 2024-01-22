@@ -1,6 +1,3 @@
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE RankNTypes #-}
-
 module WeissXMonad (runXmonad) where
 
 import Data.List
@@ -99,7 +96,10 @@ myLayout =
       smartBorders $
         mouseResize $
           windowArrange $
-            ifWider 1500 (myMulCol ||| myTall ||| Full) (Mirror myTall ||| myStackTile ||| Full)
+            ifWider
+              1500
+              (myMulCol ||| myTall ||| Full)
+              (Mirror myTall ||| myStackTile ||| Full)
   where
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
@@ -135,21 +135,18 @@ myKeys =
     -- , ("C-<Tab>"      , myFocusDown)
     -- , ("M-4"          , moveFloat $ namedScratchpadAction myScratchPads "tmux")
   ]
-    ++ workspaceKeys
+    <> workspaceKeys
     -- ++ [ ("M-4 " ++ key, fun)
     --    | (key, fun) <-
     --         [ ("v", spawnHereNamedScratchpadAction myScratchPads "pavu")
     --         , ("t", windows (`skipFloating` W.focusDown))
     --         ]
     --    ]
-    ++ [ ("<XF86Launch7> " ++ key, fun)
+    <> [ ("<XF86Launch7> " <> key, fun)
        | (key, fun) <-
           [ ("t", sendMessage NextLayout)
-          ,
-            ( "r"
-            , spawn
-                "xmonad --restart"
-            )
+          , -- , ("e", pure ())
+            ("r", spawn "xmonad --restart")
           , ("v", spawn "sh $HOME/.screenlayout/vertical.sh")
           , ("b", spawn "sh $HOME/.screenlayout/horizontal.sh")
           , ("s", spawn "flameshot gui")
@@ -172,7 +169,7 @@ myScratchPads :: [NamedScratchpad]
 myScratchPads =
   [ NS
       "term"
-      (myTerminal ++ " --config-file $XDG_CONFIG_HOME/wezterm/scratch.lua")
+      (myTerminal <> " --config-file $XDG_CONFIG_HOME/wezterm/scratch.lua")
       (title ^=? "[Scratchpad]")
       moveFloat
   , NS "pavu" "pavucontrol" (className =? "Pavucontrol") moveFloat
@@ -231,7 +228,7 @@ myManageHook =
   where
     (*=?) :: (Functor f) => f String -> String -> f Bool
     q *=? x =
-      let matchReg = \a b -> isJust $ matchRegex (mkRegex a) b
+      let matchReg a b = isJust $ matchRegex (mkRegex a) b
        in fmap (matchReg x) q
     myIgnoreClass = ["trayer"]
     myHideIgnoreClass = ["Blueman-applet"]
@@ -253,8 +250,7 @@ myConfig =
     , layoutHook = myLayout
     , normalBorderColor = myNormColor
     , focusedBorderColor = myFocusColor
-    , -- , logHook            = myLogHook
-      handleEventHook = handleEventHook def <+> fullscreenEventHook
+    -- handleEventHook = handleEventHook def <+> fullscreenEventHook
     }
     -- `removeKeysP` ["M-4"]
     `additionalKeysP` myKeys
