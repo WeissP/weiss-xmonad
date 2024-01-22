@@ -8,7 +8,7 @@ import WeissLogger
 import WeissNamedScratchpad
 import WeissPromptPass
 import WeissWindowOperations
-import WeissWorkspace
+import WeissWorkspaces
 import WeissXmobar
 import XMonad
 import XMonad.Actions.CycleWS
