@@ -113,7 +113,7 @@ workspaceKeys' =
   , (opKey, op) <-
       [ ([], [WseSwitch])
       , (["<Escape>"], [WseShift])
-      , (["<Space>"], [WseShift, WseSwitch])
+      , (["<Space>"], [WseShift, WseSwitchOrFocus])
       ]
   ]
   where
