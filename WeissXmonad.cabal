@@ -84,16 +84,20 @@ library
     WeissWorkspaces
     WeissXmobar
     WeissXMonad
+    WorkspaceForest
+    WorkspaceTree
 
   build-depends:
     , base
     , containers
     , directory
-    , extra           >=1.7.14
+    , extra                 >=1.7.14
     , filepath
+    , hashable
     , MissingH
     , regex-compat
     , Unique
     , unix
+    , unordered-containers
     , xmonad
     , xmonad-contrib
