@@ -8,8 +8,8 @@ import WeissLogger
 import WeissNamedScratchpad
 import WeissPromptPass
 import WeissWindowOperations
-import WeissWorkspaces
 import WeissXmobar
+import WorkspaceFamily
 import XMonad
 import XMonad.Actions.CycleWS
 import XMonad.Actions.MouseResize

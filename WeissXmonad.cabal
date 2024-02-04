@@ -84,8 +84,7 @@ library
     WeissWorkspaces
     WeissXmobar
     WeissXMonad
-    WorkspaceForest
-    WorkspaceTree
+    WorkspaceFamily
 
   build-depends:
     , base
@@ -96,6 +95,7 @@ library
     , hashable
     , MissingH
     , regex-compat
+    , transformers
     , Unique
     , unix
     , unordered-containers
