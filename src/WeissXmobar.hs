@@ -4,6 +4,7 @@ import Data.Functor ((<&>))
 import Data.List
 import Data.List.Utils
 import WeissLogger
+import WorkspaceFamily (logWorkspaceFamilies)
 import XMonad
 import XMonad.Hooks.StatusBar
 import XMonad.Hooks.StatusBar.PP
@@ -80,8 +81,8 @@ workspacePP =
     , ppVisible = white
     , ppHidden = lowWhite . wrap " " ""
     , ppUrgent = red . wrap (yellow "!") (yellow "!")
-    , ppOrder = \[ws, l, _] -> [ws, l]
-    -- , ppExtras        = [myTitles]
+    , ppOrder = \(ws : l : _ : wsFamilies : _) -> [wsFamilies, ws, l]
+    , ppExtras = [logWorkspaceFamilies]
     -- , ppRename = \s ws -> fn1 s
     }
 

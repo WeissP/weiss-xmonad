@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Redundant return" #-}
 module WeissXMonad (runXmonad) where
 
 import Data.List
@@ -13,6 +16,7 @@ import WorkspaceFamily
 import XMonad
 import XMonad.Actions.CycleWS
 import XMonad.Actions.MouseResize
+import XMonad.Actions.ShowText (flashText, handleTimerEvent)
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.DynamicProperty
 import XMonad.Hooks.EwmhDesktops
@@ -39,7 +43,9 @@ import XMonad.Prompt (
  )
 import qualified XMonad.StackSet as W
 import XMonad.Util.EZConfig
+import XMonad.Util.EZConfig (parseKey, parseKeyCombo)
 import XMonad.Util.Loggers
+import XMonad.Util.Parser (runParser)
 import XMonad.Util.Paste
 import XMonad.Util.Run (
   runInTerm,
@@ -250,7 +256,8 @@ myConfig =
     , layoutHook = myLayout
     , normalBorderColor = myNormColor
     , focusedBorderColor = myFocusColor
-    -- handleEventHook = handleEventHook def <+> fullscreenEventHook
+    , startupHook = return () >> checkKeymap myConfig myKeys -- return () to avoid infinite mutual recursion
+    , handleEventHook = handleEventHook def <> handleTimerEvent
     }
     -- `removeKeysP` ["M-4"]
     `additionalKeysP` myKeys

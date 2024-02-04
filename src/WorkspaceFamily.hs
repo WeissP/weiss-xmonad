@@ -4,11 +4,12 @@ import Control.Monad (when)
 import Control.Monad.Extra (fromMaybeM)
 import Control.Monad.Trans.Maybe
 import Data.Bifunctor (Bifunctor (first))
+import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 import Data.Hashable
-import Data.List (elemIndex, find, isPrefixOf, sort)
+import Data.List (elemIndex, find, intercalate, intersperse, isPrefixOf, sort)
 import Data.List.Extra (cons, snoc)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Maybe.Utils (forceMaybe)
@@ -19,8 +20,10 @@ import WeissNamedScratchpad
 import qualified WeissWindowOperations as Op
 import XMonad
 import XMonad.Actions.ShowText (flashText)
+import XMonad.Actions.SwapWorkspaces (swapWithCurrent, swapWorkspaces)
 import XMonad.Actions.WorkspaceNames (getCurrentWorkspaceName, getWorkspaceName)
 import qualified XMonad.StackSet as W
+import XMonad.Util.EZConfig (parseKey, parseKeyCombo)
 import qualified XMonad.Util.ExtensibleState as XS
 import XMonad.Util.Loggers
 
@@ -52,6 +55,9 @@ allFamilies =
                 (pref `isPrefixOf`)
          in (ns, f)
 
+getFamily :: FamilyName -> Family
+getFamily name = forceMaybe $ M.lookup name allFamilies
+
 currentFamilyMember :: FamilyName -> X FamilyMember
 currentFamilyMember name =
   XS.get <&> \(FamilyStore hm) -> forceMaybe $ M.lookup name hm
@@ -66,7 +72,7 @@ logWorkspaceFamilies = do
   OrderedFamilies names <- XS.get
   let fs = mapMaybe (`M.lookup` allFamilies) names
   ids <- traverse fullID fs
-  return $ Just $ show ids
+  return $ Just $ intercalate "→" (take 3 ids)
 
 data Family = Family
   { fName :: FamilyName
@@ -126,8 +132,7 @@ singles =
   uncurry Single
     <$> [ ("览", "<Down>")
         , ("邮", "h")
-        , ("音", "<Up>")
-        , ("娱", "n")
+        , ("媒", "<Up>")
         , ("聊", "y")
         , (scratchpadWorkspaceTag, "0")
         ]
@@ -137,8 +142,18 @@ workspaceKeys' =
   [ op prefix effect
   | op <- make singles <> make fMembers <> make (M.elems allFamilies)
   , (prefix, effect) <-
-      [([], switch), (["<Escape>"], shift), (["<Space>"], shift <> switchOrFocus)]
+      [ ([], switch)
+      , (["<Escape>"], shift)
+      , (["<End>"], swap)
+      , (["<Space>"], shift <> switchOrFocus)
+      ]
   ]
+    <> [(["g"], logWorkspaceFamilies >>= flashText def 2 . show)]
+    <> [ ( ["<End>"] <> nodeKeyPrefix f `snoc` nodeKey f
+         , swapWithCurrentFamily (fName f) >>= (switch `runOn`)
+         )
+       | f <- M.elems allFamilies
+       ]
   where
     toPair n effPrefix eff =
       ( nodeKeyPrefix n <> effPrefix `snoc` nodeKey n
@@ -148,17 +163,21 @@ workspaceKeys' =
     fMembers :: [(FamilyOrder, FamilyMember)] =
       (allFamilyMembers <&> (0,))
         <> (take 3 allFamilyMembers <&> (1,))
-        <> (take 3 allFamilyMembers <&> (2,))
+        <> (take 1 allFamilyMembers <&> (2,))
     switch = WsEffect (windows . W.greedyView) True
     shift = WsEffect (windows . W.shift) False
     switchOrFocus = WsEffect Op.switchOrFocus True
+    swap = WsEffect (windows . swapWithCurrent) True
 
 workspaceKeys :: [(String, X ())]
 workspaceKeys = fmap (first $ unwords . cons "<XF86Launch7>") workspaceKeys'
 
 data WsEffect = WsEffect {runWsEffect :: WorkspaceId -> X (), mayActiviate :: Bool}
 instance Semigroup WsEffect where
-  x <> y = WsEffect (runWsEffect x >> runWsEffect y) (mayActiviate x || mayActiviate y)
+  x <> y =
+    WsEffect
+      (\ws -> runWsEffect x ws >> runWsEffect y ws)
+      (mayActiviate x || mayActiviate y)
 
 class Node n where
   fullID :: n -> X WorkspaceId
@@ -170,8 +189,22 @@ class Node n where
   nodeKey :: n -> Key
   nodeName :: n -> String
 
+swapFamilies :: FamilyName -> FamilyName -> X ()
+swapFamilies a b = traverse_ swapPair pairs
+  where
+    allMembers name = allFamilyMembers <&> (getFamily name `idWithMember`)
+    pairs = zip (allMembers a) (allMembers b)
+    swapPair (x, y) = windows (swapWorkspaces x y)
+
+-- swap the given family with current family, return the replaced family
+swapWithCurrentFamily :: FamilyName -> X Family
+swapWithCurrentFamily name = do
+  target <- currentFamily
+  swapFamilies name (fName target)
+  return target
+
 numToKey :: Int -> String
-numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "\\", "-", "\""] !! (s - 1)
+numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "-"] !! (s - 1)
 
 swapElements :: (Eq a) => a -> a -> [a] -> [a]
 swapElements _ _ [] = []
