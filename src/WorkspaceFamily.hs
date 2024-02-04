@@ -1,4 +1,4 @@
-module WorkspaceFamily (myWorkspaces, workspaceKeys) where
+module WorkspaceFamily (myWorkspaces, workspaceKeys, logWorkspaceFamilies) where
 
 import Control.Monad (when)
 import Control.Monad.Extra (fromMaybeM)
@@ -8,8 +8,9 @@ import Data.Functor ((<&>))
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 import Data.Hashable
-import Data.List (elemIndex, find, isPrefixOf)
+import Data.List (elemIndex, find, isPrefixOf, sort)
 import Data.List.Extra (cons, snoc)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Maybe.Utils (forceMaybe)
 import Data.String (IsString)
 import GHC.Generics (Generic)
@@ -17,9 +18,11 @@ import Text.Printf (printf)
 import WeissNamedScratchpad
 import qualified WeissWindowOperations as Op
 import XMonad
+import XMonad.Actions.ShowText (flashText)
 import XMonad.Actions.WorkspaceNames (getCurrentWorkspaceName, getWorkspaceName)
 import qualified XMonad.StackSet as W
 import qualified XMonad.Util.ExtensibleState as XS
+import XMonad.Util.Loggers
 
 myWorkspaces :: [WorkspaceId]
 myWorkspaces =
@@ -32,7 +35,7 @@ instance Hashable RootName
 
 type FamilyName = String
 familyNames :: [FamilyName]
-familyNames = show <$> [1 :: Int .. 9]
+familyNames = sort $ M.keys allFamilies
 
 allFamilies :: HashMap FamilyName Family
 allFamilies =
@@ -53,11 +56,17 @@ currentFamilyMember :: FamilyName -> X FamilyMember
 currentFamilyMember name =
   XS.get <&> \(FamilyStore hm) -> forceMaybe $ M.lookup name hm
 
-currentFamilyOrder :: X FamilyOrder
-currentFamilyOrder = fromMaybeM (pure 1) $ runMaybeT $ do
-  ws <- MaybeT getCurrentWorkspaceName
-  f <- MaybeT $ pure $ find (`hasWorkspace` ws) (M.elems allFamilies)
-  MaybeT $ pure $ elemIndex (fName f) familyNames
+currentFamily :: X Family
+currentFamily = fromMaybeM (pure $ head $ M.elems allFamilies) $ runMaybeT $ do
+  ws <- MaybeT logCurrent
+  MaybeT $ pure $ find (`hasWorkspace` ws) (M.elems allFamilies)
+
+logWorkspaceFamilies :: Logger
+logWorkspaceFamilies = do
+  OrderedFamilies names <- XS.get
+  let fs = mapMaybe (`M.lookup` allFamilies) names
+  ids <- traverse fullID fs
+  return $ Just $ show ids
 
 data Family = Family
   { fName :: FamilyName
@@ -67,13 +76,13 @@ data Family = Family
   }
 instance Node Family where
   fullID (Family {..}) = currentFamilyMember fName <&> idWithMember
-  onActivate (Family {..}) = do
-    wantIdx <- currentFamilyOrder
+  onActivate this = do
+    wantF <- currentFamily
     XS.modify $ \(OrderedFamilies fs) ->
-      OrderedFamilies $
-        let curIdx = forceMaybe $ elemIndex fName fs
-         in swapElementsAt wantIdx curIdx fs
+      OrderedFamilies $ swapElements (fName wantF) (fName this) fs
+
   nodeName (Family {..}) = fName
+  nodeKeyPrefix _ = ["<Return>"]
   nodeKey (Family {..}) = fKey
 
 type FamilyOrder = Int -- zero based
@@ -89,7 +98,7 @@ nthFamilyName idx = do
 nthFamily :: FamilyOrder -> X Family
 nthFamily idx = forceMaybe . flip M.lookup allFamilies <$> nthFamilyName idx
 
--- one based
+-- 1 based
 newtype FamilyMember = FamilyMember Int deriving newtype (Show)
 instance Node (FamilyOrder, FamilyMember) where
   fullID (idx, m) = nthFamily idx <&> (`idWithMember` m)
@@ -131,13 +140,15 @@ workspaceKeys' =
       [([], switch), (["<Escape>"], shift), (["<Space>"], shift <> switchOrFocus)]
   ]
   where
-    toPair n effPrefix eff = (nodeKeyPrefix n <> effPrefix `snoc` nodeKey n, eff `runOn` n)
-    -- make :: (Node a) => [String] -> [a] -> [[String] -> WsEffect -> ([String], X ())]
+    toPair n effPrefix eff =
+      ( nodeKeyPrefix n <> effPrefix `snoc` nodeKey n
+      , eff `runOn` n
+      )
     make nodes = toPair <$> nodes
     fMembers :: [(FamilyOrder, FamilyMember)] =
-      (allFamilyMembers <&> (1,))
+      (allFamilyMembers <&> (0,))
+        <> (take 3 allFamilyMembers <&> (1,))
         <> (take 3 allFamilyMembers <&> (2,))
-        <> (take 3 allFamilyMembers <&> (3,))
     switch = WsEffect (windows . W.greedyView) True
     shift = WsEffect (windows . W.shift) False
     switchOrFocus = WsEffect Op.switchOrFocus True
@@ -162,11 +173,9 @@ class Node n where
 numToKey :: Int -> String
 numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "\\", "-", "\""] !! (s - 1)
 
-swapElementsAt :: Int -> Int -> [a] -> [a]
-swapElementsAt a b list = if a < b then help a b else help b a
-  where
-    help front back = list1 <> [list !! back] <> list2 <> [list !! front] <> list3
-      where
-        list1 = take front list
-        list2 = drop (succ front) (take back list)
-        list3 = drop (succ back) list
+swapElements :: (Eq a) => a -> a -> [a] -> [a]
+swapElements _ _ [] = []
+swapElements n m (x : xs)
+  | n == x = m : swapElements n m xs
+  | m == x = n : swapElements n m xs
+  | otherwise = x : swapElements n m xs
