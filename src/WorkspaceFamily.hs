@@ -84,8 +84,7 @@ instance Node Family where
   fullID (Family {..}) = currentFamilyMember fName <&> idWithMember
   onActivate this = do
     wantF <- currentFamily
-    XS.modify $ \(OrderedFamilies fs) ->
-      OrderedFamilies $ swapElements (fName wantF) (fName this) fs
+    swapOrderedFamilies (fName this) (fName wantF)
 
   nodeName (Family {..}) = fName
   nodeKeyPrefix _ = ["<Return>"]
@@ -190,7 +189,7 @@ class Node n where
   nodeName :: n -> String
 
 swapFamilies :: FamilyName -> FamilyName -> X ()
-swapFamilies a b = traverse_ swapPair pairs
+swapFamilies a b = traverse_ swapPair pairs >> swapOrderedFamilies a b
   where
     allMembers name = allFamilyMembers <&> (getFamily name `idWithMember`)
     pairs = zip (allMembers a) (allMembers b)
@@ -205,6 +204,9 @@ swapWithCurrentFamily name = do
 
 numToKey :: Int -> String
 numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "-"] !! (s - 1)
+
+swapOrderedFamilies :: FamilyName -> FamilyName -> X ()
+swapOrderedFamilies a b = XS.modify $ \(OrderedFamilies fs) -> OrderedFamilies $ swapElements a b fs
 
 swapElements :: (Eq a) => a -> a -> [a] -> [a]
 swapElements _ _ [] = []
