@@ -115,6 +115,14 @@ instance Node (FamilyOrder, FamilyMember) where
 allFamilyMembers :: [FamilyMember]
 allFamilyMembers = FamilyMember <$> [1 .. 6]
 
+newtype CurrentFamilyMember = CurrentFamilyMember FamilyMember
+  deriving newtype (Show)
+instance Node CurrentFamilyMember where
+  fullID (CurrentFamilyMember m) = currentFamily <&> (`idWithMember` m)
+  onActivate _ = pure ()
+  nodeName = show
+  nodeKey (CurrentFamilyMember (FamilyMember m)) = numToKey m
+
 newtype FamilyStore = FamilyStore (HashMap FamilyName FamilyMember)
 instance ExtensionClass FamilyStore where
   initialValue = FamilyStore $ M.fromList $ (,FamilyMember 1) <$> familyNames
@@ -143,7 +151,6 @@ workspaceKeys' =
   , (prefix, effect) <-
       [ ([], switch)
       , (["<Escape>"], shift)
-      , (["<End>"], swap)
       , (["<Space>"], shift <> switchOrFocus)
       ]
   ]
@@ -152,6 +159,9 @@ workspaceKeys' =
          , swapWithCurrentFamily (fName f) >>= (switch `runOn`)
          )
        | f <- M.elems allFamilies
+       ]
+    <> [ toPair n ["<End>"] swap
+       | n <- CurrentFamilyMember <$> allFamilyMembers
        ]
   where
     toPair n effPrefix eff =
