@@ -217,12 +217,8 @@ myManageHook =
   composeAll
     ( concat
         [ [isDialog --> doFloat]
-        , -- , [className =? "Chromium" --> doShift (getWorkspace 2)]
-          -- , [className =? "Google-chrome" --> doShift (getWorkspace 3)]
-          -- [className =? "Thunderbird" --> doShift "邮H"],
-          [className =? "Cider" --> doShift "音"]
-        , [className =? "Spotify" --> doShift "音"]
         , [className =? "Mattermost" --> doShift "聊"]
+        , [className =? "P3X OneNote" --> doShift "记"]
         , [className =? x --> doIgnore | x <- myIgnoreClass]
         , [className =? x --> doHideIgnore | x <- myHideIgnoreClass]
         , [className =? x --> doCenterFloat | x <- myCenterFloatClass]
