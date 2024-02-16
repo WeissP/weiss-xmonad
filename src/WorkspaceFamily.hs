@@ -1,7 +1,7 @@
 module WorkspaceFamily (myWorkspaces, workspaceKeys, logWorkspaceFamilies) where
 
 import Control.Monad (when)
-import Control.Monad.Extra (fromMaybeM)
+import Control.Monad.Extra (fromMaybeM, pureIf)
 import Control.Monad.Trans.Maybe
 import Data.Bifunctor (Bifunctor (first))
 import Data.Foldable (traverse_)
@@ -18,7 +18,7 @@ import Data.List (
   singleton,
   sort,
  )
-import Data.List.Extra (cons, snoc)
+import Data.List.Extra (cons, firstJust, snoc)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Maybe.Utils (forceMaybe)
 import Data.String (IsString)
@@ -39,21 +39,95 @@ type Key = String
 type FamilyName = String
 type FamilyNum = Int
 
-data Family = NumFamily FamilyNum | LabeledFamily FamilyName Key deriving (Show)
-allFamilyNums = [1 .. 9]
-allFamilies =
-  (NumFamily <$> allFamilyNums)
-    <> ( uncurry LabeledFamily
-          <$> [ ("览", "<Down>")
-              , ("邮", "h")
-              , ("媒", "<Up>")
-              , ("聊", "y")
-              , ("设", "n")
-              , ("记", "-")
-              , (scratchpadWorkspaceTag, "0")
-              ]
-       )
-myWorkspaces = [idWithMember f m | f <- allFamilies, m <- allFamilyMembers]
+newtype NumberedFamily = NumberedFamily Int deriving newtype (Show, Eq)
+allNumberedFamilies = NumberedFamily <$> [1 .. 9]
+instance Family NumberedFamily where
+  fName = show
+  fPrefix nf = fName nf <> "."
+  idWithMember nf = (fPrefix nf <>) . show
+  hasWorkspace f ws = fPrefix f `isPrefixOf` ws
+instance Node NumberedFamily where
+  workspaceID = fullID
+  onActivate n = currentNumberedFamily >>= swapOrderedNumFamilies n
+  nodeKeys (NumberedFamily n) = ["<Return>", numToKey n]
+
+currentNumberedFamily :: X NumberedFamily
+currentNumberedFamily = fromMaybeM (pure $ head allNumberedFamilies) $ runMaybeT $ do
+  ws <- MaybeT logCurrent
+  MaybeT $ pure $ find (`hasWorkspace` ws) allNumberedFamilies
+
+swapOrderedNumFamilies :: NumberedFamily -> NumberedFamily -> X ()
+swapOrderedNumFamilies a b = XS.modify $ \(OrderedNumFamilies fs) -> OrderedNumFamilies $ swapElements a b fs
+
+data LabeledFamily = LabeledFamily FamilyName Key deriving (Show)
+allLabeledFamilies =
+  uncurry LabeledFamily
+    <$> [ ("览", "<Down>")
+        , ("邮", "h")
+        , ("媒", "<Up>")
+        , ("聊", "y")
+        , ("设", "n")
+        , ("记", "-")
+        ]
+
+instance Family LabeledFamily where
+  fName (LabeledFamily name _) = name
+  fPrefix = fName
+
+instance Node LabeledFamily where
+  workspaceID = fullID
+  onActivate _ = pure ()
+  nodeKeys (LabeledFamily _ key) = [key]
+
+class Family a where
+  fName :: a -> FamilyName
+  fPrefix :: a -> String
+  idWithMember :: a -> FamilyMember -> WorkspaceId
+  idWithMember f = (fPrefix f <>) . show
+  hasWorkspace :: a -> WorkspaceId -> Bool
+  hasWorkspace f ws = fPrefix f `isPrefixOf` ws
+  fullID :: a -> X WorkspaceId
+  fullID f = storedFamilyMember (fName f) <&> idWithMember f
+
+data GFamily = forall a. (Family a) => GFamily a
+instance Family GFamily where
+  fName (GFamily f) = fName f
+  fPrefix (GFamily f) = fPrefix f
+
+allFamilies :: [GFamily]
+allFamilies = (allLabeledFamilies <&> GFamily) <> (allNumberedFamilies <&> GFamily)
+
+allFamiliyNames :: [FamilyName]
+allFamiliyNames = allFamilies <&> fName
+
+currentFamily :: X GFamily
+currentFamily = fromMaybeM (pure $ head allFamilies) $ runMaybeT $ do
+  ws <- MaybeT logCurrent
+  MaybeT $ pure $ find (`hasWorkspace` ws) allFamilies
+
+newtype FamilyMember = FamilyMember Int deriving newtype (Show)
+allFamilyMembers = FamilyMember <$> [1 .. 9]
+instance Node FamilyMember where
+  workspaceID m = currentFamily <&> (`idWithMember` m)
+  onActivate m = currentFamily >>= (`updateFamilyStore` m) . fName
+  nodeKeys (FamilyMember m) = ["<End>", numToKey m]
+
+instance Node (FamilyOrder, FamilyMember) where
+  workspaceID (idx, m) = nthNumberedFamily idx <&> (`idWithMember` m)
+  onActivate (idx, m) = nthNumberedFamily idx >>= (`updateFamilyStore` m) . fName
+  nodeKeys (idx, FamilyMember m) = singleton $ numToKey $ m + [0, 6, 9] !! idx
+
+instance Node (LabeledFamily, FamilyMember) where
+  workspaceID = pure . uncurry idWithMember
+  onActivate (f, m) = updateFamilyStore (fName f) m
+  nodeKeys (f, FamilyMember m) = "<End>" : nodeKeys f `snoc` numToKey m
+
+class Node n where
+  workspaceID :: n -> X WorkspaceId
+  onActivate :: n -> X ()
+  runOn :: WsEffect -> n -> X ()
+  (WsEffect {..}) `runOn` n = when mayActiviate (onActivate n) >> workspaceID n >>= runWsEffect
+  nodeKeys :: n -> [Key]
 
 data WsEffect = WsEffect {runWsEffect :: WorkspaceId -> X (), mayActiviate :: Bool}
 instance Semigroup WsEffect where
@@ -63,80 +137,24 @@ instance Semigroup WsEffect where
       (mayActiviate x || mayActiviate y)
 
 type FamilyOrder = Int -- zero based
-newtype OrderedFamilies = OrderedFamilies [FamilyNum] deriving newtype (Show)
-instance ExtensionClass OrderedFamilies where
-  initialValue = OrderedFamilies allFamilyNums
-
-class Node n where
-  fullID :: n -> X WorkspaceId
-  onActivate :: n -> X ()
-  runOn :: WsEffect -> n -> X ()
-  (WsEffect {..}) `runOn` n = when mayActiviate (onActivate n) >> fullID n >>= runWsEffect
-  nodeKeys :: n -> [Key]
-
-instance Node Family where
-  fullID f = storedFamilyMember (fName f) <&> idWithMember f
-  onActivate (LabeledFamily _ _) = pure ()
-  onActivate (NumFamily n) = currentFamilyNum >>= swapOrderedFamilies n
-  nodeKeys (LabeledFamily _ k) = [k]
-  nodeKeys (NumFamily n) = ["<Return>", numToKey n]
-
-nthNumFamily :: FamilyOrder -> X FamilyNum
-nthNumFamily idx = do
-  (OrderedFamilies fs) <- XS.get
-  return $ fs !! idx
+newtype OrderedNumFamilies = OrderedNumFamilies [NumberedFamily]
+  deriving newtype (Show)
+instance ExtensionClass OrderedNumFamilies where
+  initialValue = OrderedNumFamilies allNumberedFamilies
 
 newtype FamilyStore = FamilyStore (HashMap FamilyName FamilyMember)
 instance ExtensionClass FamilyStore where
-  initialValue = FamilyStore $ M.fromList ((,FamilyMember 1) . fName <$> allFamilies)
-
-storedFamilyMember :: FamilyName -> X FamilyMember
-storedFamilyMember name =
-  XS.get <&> \(FamilyStore hm) -> forceMaybe $ M.lookup name hm
-
-updateFamilyStore :: FamilyName -> FamilyMember -> X ()
-updateFamilyStore name m = XS.modify $ \(FamilyStore hm) -> FamilyStore $ M.insert name m hm
-
-currentFamily :: X Family
-currentFamily = fromMaybeM (pure $ head allFamilies) $ runMaybeT $ do
-  ws <- MaybeT logCurrent
-  MaybeT $ pure $ find (`hasWorkspace` ws) allFamilies
-
-currentFamilyNum :: X FamilyNum
-currentFamilyNum =
-  currentFamily >>= \case
-    NumFamily n -> pure n
-    LabeledFamily _ _ -> XS.get <&> \(OrderedFamilies fs) -> head fs
-
-logWorkspaceFamilies :: Logger
-logWorkspaceFamilies = do
-  OrderedFamilies nums <- XS.get
-  ids <- traverse (fullID . NumFamily) (take 3 nums)
-  return $ Just $ intercalate "→" ids
-
--- 1 based
-newtype FamilyMember = FamilyMember Int deriving newtype (Show)
-allFamilyMembers = FamilyMember <$> [1 .. 6]
-
-instance Node (FamilyOrder, FamilyMember) where
-  fullID (idx, m) = nthNumFamily idx <&> (`idWithMember` m) . NumFamily
-  onActivate (idx, m) = nthNumFamily idx >>= (`updateFamilyStore` m) . fName . NumFamily
-  nodeKeys (idx, FamilyMember m) = singleton $ numToKey $ m + [0, 6, 9] !! idx
-
-newtype CurrentFamilyMember = CurrentFamilyMember FamilyMember
-  deriving newtype (Show)
-instance Node CurrentFamilyMember where
-  fullID (CurrentFamilyMember m) = currentFamily <&> (`idWithMember` m)
-  onActivate (CurrentFamilyMember m) = currentFamily >>= (`updateFamilyStore` m) . fName
-  nodeKeys (CurrentFamilyMember (FamilyMember m)) = ["<End>", numToKey m]
+  initialValue = FamilyStore $ M.fromList ((,FamilyMember 1) <$> allFamiliyNames)
 
 workspaceKeys' :: [([String], X ())]
 workspaceKeys' =
   [ op prefix effect
   | op <-
       make membersWithOrder
-        <> make (CurrentFamilyMember <$> allFamilyMembers)
-        <> make allFamilies
+        <> make allFamilyMembers
+        <> make allNumberedFamilies
+        <> make allLabeledFamilies
+        <> make labeldFamilyMember
   , (prefix, effect) <-
       [ ([], switch)
       , (["<Escape>"], shift)
@@ -148,8 +166,8 @@ workspaceKeys' =
     toPair n effPrefix eff = (effPrefix <> nodeKeys n, eff `runOn` n)
     make nodes = toPair <$> nodes
     membersWithOrder :: [(FamilyOrder, FamilyMember)] =
-      (allFamilyMembers <&> (0,)) <> (take 3 allFamilyMembers <&> (1,))
-
+      (take 6 allFamilyMembers <&> (0,)) <> (take 3 allFamilyMembers <&> (1,))
+    labeldFamilyMember = [(f, m) | f <- allLabeledFamilies, m <- allFamilyMembers]
     switch = WsEffect (windows . W.greedyView) True
     shift = WsEffect (windows . W.shift) False
     switchOrFocus = WsEffect Op.switchOrFocus True
@@ -158,26 +176,17 @@ workspaceKeys' =
 workspaceKeys :: [(String, X ())]
 workspaceKeys = fmap (first $ unwords . cons "<XF86Launch7>") workspaceKeys'
 
-fName :: Family -> FamilyName
-fName (NumFamily num) = show num
-fName (LabeledFamily name _) = name
+storedFamilyMember :: FamilyName -> X FamilyMember
+storedFamilyMember name =
+  XS.get <&> \(FamilyStore hm) -> forceMaybe $ M.lookup name hm
 
-fPrefix :: Family -> String
-fPrefix nf@(NumFamily _) = fName nf <> "."
-fPrefix lf@(LabeledFamily _ _) = fName lf
+nthNumberedFamily :: FamilyOrder -> X NumberedFamily
+nthNumberedFamily idx = do
+  (OrderedNumFamilies fs) <- XS.get
+  return $ fs !! idx
 
-idWithMember :: Family -> FamilyMember -> WorkspaceId
-idWithMember (LabeledFamily name _) (FamilyMember 1) = name
-idWithMember f m = fPrefix f <> show m
-
-hasWorkspace :: Family -> WorkspaceId -> Bool
-hasWorkspace f ws = fPrefix f `isPrefixOf` ws
-
-numToKey :: Int -> String
-numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "-"] !! (s - 1)
-
-swapOrderedFamilies :: FamilyNum -> FamilyNum -> X ()
-swapOrderedFamilies a b = XS.modify $ \(OrderedFamilies fs) -> OrderedFamilies $ swapElements a b fs
+updateFamilyStore :: FamilyName -> FamilyMember -> X ()
+updateFamilyStore name m = XS.modify $ \(FamilyStore hm) -> FamilyStore $ M.insert name m hm
 
 swapElements :: (Eq a) => a -> a -> [a] -> [a]
 swapElements _ _ [] = []
@@ -185,3 +194,16 @@ swapElements n m (x : xs)
   | n == x = m : swapElements n m xs
   | m == x = n : swapElements n m xs
   | otherwise = x : swapElements n m xs
+
+numToKey :: Int -> String
+numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "-"] !! (s - 1)
+
+myWorkspaces =
+  scratchpadWorkspaceTag
+    : [idWithMember f m | f <- allFamilies, m <- allFamilyMembers]
+
+logWorkspaceFamilies :: Logger
+logWorkspaceFamilies = do
+  OrderedNumFamilies nums <- XS.get
+  ids <- traverse workspaceID (take 2 nums)
+  return $ Just $ intercalate "→" ids

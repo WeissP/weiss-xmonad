@@ -217,8 +217,8 @@ myManageHook =
   composeAll
     ( concat
         [ [isDialog --> doFloat]
-        , [className =? "Mattermost" --> doShift "聊"]
-        , [className =? "P3X OneNote" --> doShift "记"]
+        , [className =? "Mattermost" --> doShift "聊2"]
+        , [className =? "p3x-onenote" --> doShift "记3"]
         , [className =? x --> doIgnore | x <- myIgnoreClass]
         , [className =? x --> doHideIgnore | x <- myHideIgnoreClass]
         , [className =? x --> doCenterFloat | x <- myCenterFloatClass]
