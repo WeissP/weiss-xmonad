@@ -217,6 +217,7 @@ myManageHook =
   composeAll
     ( concat
         [ [isDialog --> doFloat]
+        , [className =? "vivaldi-stable" --> doShift "览1"]
         , [className =? "Mattermost" --> doShift "聊2"]
         , [className =? "p3x-onenote" --> doShift "记3"]
         , [className =? x --> doIgnore | x <- myIgnoreClass]
