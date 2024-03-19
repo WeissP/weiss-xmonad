@@ -68,11 +68,14 @@ allLabeledFamilies =
         , ("聊", "y")
         , ("设", "n")
         , ("记", "-")
+        , (scratchpadWorkspaceTag, "0")
         ]
 
 instance Family LabeledFamily where
   fName (LabeledFamily name _) = name
   fPrefix = fName
+  idWithMember f (FamilyMember 1) = fPrefix f
+  idWithMember f m = fPrefix f <> show m
 
 instance Node LabeledFamily where
   workspaceID = fullID
@@ -83,7 +86,6 @@ class Family a where
   fName :: a -> FamilyName
   fPrefix :: a -> String
   idWithMember :: a -> FamilyMember -> WorkspaceId
-  idWithMember f = (fPrefix f <>) . show
   hasWorkspace :: a -> WorkspaceId -> Bool
   hasWorkspace f ws = fPrefix f `isPrefixOf` ws
   fullID :: a -> X WorkspaceId
@@ -93,6 +95,7 @@ data GFamily = forall a. (Family a) => GFamily a
 instance Family GFamily where
   fName (GFamily f) = fName f
   fPrefix (GFamily f) = fPrefix f
+  idWithMember (GFamily f) = idWithMember f
 
 allFamilies :: [GFamily]
 allFamilies = (allLabeledFamilies <&> GFamily) <> (allNumberedFamilies <&> GFamily)
@@ -198,9 +201,7 @@ swapElements n m (x : xs)
 numToKey :: Int -> String
 numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "-"] !! (s - 1)
 
-myWorkspaces =
-  scratchpadWorkspaceTag
-    : [idWithMember f m | f <- allFamilies, m <- allFamilyMembers]
+myWorkspaces = [idWithMember f m | f <- allFamilies, m <- allFamilyMembers]
 
 logWorkspaceFamilies :: Logger
 logWorkspaceFamilies = do
