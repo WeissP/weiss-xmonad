@@ -77,9 +77,10 @@ library
   import:          common-options
   hs-source-dirs:  src
   exposed-modules:
-    WeissLogger
-    WeissNamedScratchpad
+    Config
+    Utils
     WeissPromptPass
+    WeissScratchpad
     WeissWindowOperations
     WeissXmobar
     WeissXMonad

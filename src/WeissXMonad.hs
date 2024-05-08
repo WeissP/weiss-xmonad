@@ -3,13 +3,14 @@
 {-# HLINT ignore "Redundant return" #-}
 module WeissXMonad (runXmonad) where
 
+import Config
 import Data.List
 import Data.Maybe
 import System.IO (hPutStrLn)
 import Text.Regex
-import WeissLogger
-import WeissNamedScratchpad
+import Utils
 import WeissPromptPass
+import WeissScratchpad
 import WeissWindowOperations
 import WeissXmobar
 import WorkspaceFamily
@@ -41,7 +42,7 @@ import XMonad.Prompt (
   height,
   position,
  )
-import qualified XMonad.StackSet as W
+import XMonad.StackSet qualified as W
 import XMonad.Util.EZConfig
 import XMonad.Util.EZConfig (parseKey, parseKeyCombo)
 import XMonad.Util.Loggers
@@ -54,20 +55,6 @@ import XMonad.Util.Run (
   spawnPipe,
  )
 import XMonad.Util.Ungrab
-
-myTerminal = "wezterm"
-
-myBorderWidth :: Dimension
-myBorderWidth = 3 -- Sets border width for windows
-
-myNormColor :: String
-myNormColor = "#282c34" -- Border color of normal windows
-
-myFocusColor :: String
-myFocusColor = "#46d9ff" -- Border color of focused windows
-
-myModMask :: KeyMask
-myModMask = mod4Mask
 
 mylogLayout :: Logger
 mylogLayout = withWindowSet $ return . Just . ld
@@ -87,10 +74,11 @@ mySpacing =
     (Border 5 5 5 5) -- Size of window gaps
     True -- Enable window gaps
 
+-- prompt config
 myXPConfig :: XPConfig
 myXPConfig =
   def
-    { position = Top
+    { position = CenteredAt 0.5 0.5
     , font = "xft:DejaVu Sans:size=9"
     , height = 40
     , autoComplete = Just 800
@@ -123,16 +111,15 @@ myKeys =
         "rofi -m -4 -no-lazy-grab -run-command \"zsh -i -c '{cmd}'\" -show run"
     )
   , ("<XF86Launch8>", nextScreen)
-  , ("<F6>", spawnHereNamedScratchpadAction myScratchPads "term")
+  , ("<F6>", curNSP)
   , ("<F11>", withFocused toggleFloat)
-  , ("<XF86Launch6>", mySwapMaster)
+  , ("<XF86Launch6>", weissSwapMaster)
   , ("M-<Escape>", kill)
-  , ("M-1", myFocusUp)
-  , ("M-2", myFocusDown)
+  , ("M-1", weissFocusUp)
+  , ("M-2", weissFocusDown)
   , ("M-<Up>", sendMessage Shrink)
   , ("M-<Down>", sendMessage Expand)
-  , ("M-k", spawn "wezterm")
-  , ("M-4", spawnHereNamedScratchpadAction myScratchPads "pavu")
+  , ("M-k", spawn myTerminal)
   ,
     ( "M-p"
     , spawn "rofi -m -4 -no-lazy-grab -run-command \"zsh -i -c '{cmd}'\" -show run"
@@ -167,67 +154,23 @@ myKeys =
           ]
        ]
 
--- Query: starts with
-(^=?) :: (Eq a) => Query [a] -> [a] -> Query Bool
-q ^=? x = isPrefixOf x <$> q
-
-myScratchPads :: [NamedScratchpad]
-myScratchPads =
-  [ NS
-      "term"
-      (myTerminal <> " --config-file $XDG_CONFIG_HOME/wezterm/scratch.lua")
-      (title ^=? "[Scratchpad]")
-      moveFloat
-  , NS "pavu" "pavucontrol" (className =? "Pavucontrol") moveFloat
-  ]
-  where
-    moveFloat :: Window -> X ()
-    moveFloat a = do
-      m <- logMaster
-      l <- logLayout
-      case (m, trimLayoutModifiers l) of
-        (_, Just "StackTile") ->
-          windows $
-            W.float
-              a
-              (W.RationalRect (1 / 50) (26 / 50) (45 / 50) (20 / 50))
-        (True, Just "Mirror Tall") ->
-          windows $
-            W.float
-              a
-              (W.RationalRect (1 / 50) (26 / 50) (45 / 50) (20 / 50))
-        (False, Just "Mirror Tall") ->
-          windows $
-            W.float
-              a
-              (W.RationalRect (1 / 50) (5 / 50) (45 / 50) (20 / 50))
-        (True, _) ->
-          windows $
-            W.float
-              a
-              (W.RationalRect (26 / 50) (6 / 50) (23 / 50) (20 / 50))
-        (False, _) ->
-          windows $
-            W.float
-              a
-              (W.RationalRect (1 / 50) (6 / 50) (23 / 50) (20 / 50))
-
 myManageHook :: ManageHook
 myManageHook =
-  composeAll
-    ( concat
-        [ [isDialog --> doFloat]
-        , [className =? "vivaldi-stable" --> doShift "览1"]
-        , [className =? "Mattermost" --> doShift "聊2"]
-        , [className =? "p3x-onenote" --> doShift "记3"]
-        , [className =? x --> doIgnore | x <- myIgnoreClass]
-        , [className =? x --> doHideIgnore | x <- myHideIgnoreClass]
-        , [className =? x --> doCenterFloat | x <- myCenterFloatClass]
-        , [title =? x --> doCenterFloat | x <- myCenterFloatTitle]
-        , [title *=? x --> doCenterFloat | x <- myCenterFloatTitleReg]
-        , [className =? x --> doFullFloat | x <- myFullFloatClass]
-        ]
-    )
+  myScratchPadsManageHook
+    <> composeAll
+      ( concat
+          [ [isDialog --> doFloat]
+          , -- , [className =? "vivaldi-stable" --> doShift "览"]
+            [className =? "Mattermost" --> doShift "聊2"]
+          , [className =? "p3x-onenote" --> doShift "记3"]
+          , [className =? x --> doIgnore | x <- myIgnoreClass]
+          , [className =? x --> doHideIgnore | x <- myHideIgnoreClass]
+          , [className =? x --> doCenterFloat | x <- myCenterFloatClass]
+          , [title =? x --> doCenterFloat | x <- myCenterFloatTitle]
+          , [title *=? x --> doCenterFloat | x <- myCenterFloatTitleReg]
+          , [className =? x --> doFullFloat | x <- myFullFloatClass]
+          ]
+      )
   where
     (*=?) :: (Functor f) => f String -> String -> f Bool
     q *=? x =
@@ -267,7 +210,7 @@ runXmonad xmobarDir = do
         withEasySB (xmobarVertical xmobarDir <> xmobarHori xmobarDir) defToggleStrutsKey $
           docks myConfig
 
-myFocusUp, myFocusDown, mySwapMaster :: X ()
-myFocusUp = myFocusUpWithNSP myScratchPads
-myFocusDown = myFocusDownWithNSP myScratchPads
-mySwapMaster = mySwapMasterWithNsp myScratchPads
+-- myFocusUp, myFocusDown, mySwapMaster :: X ()
+-- myFocusUp = myFocusUpWithNSP myScratchPads
+-- myFocusDown = myFocusDownWithNSP myScratchPads
+-- mySwapMaster = mySwapMasterWithNsp myScratchPads

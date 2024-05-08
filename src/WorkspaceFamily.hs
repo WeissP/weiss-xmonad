@@ -7,7 +7,7 @@ import Data.Bifunctor (Bifunctor (first))
 import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
 import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as M
+import Data.HashMap.Strict qualified as M
 import Data.Hashable
 import Data.List (
   elemIndex,
@@ -24,16 +24,17 @@ import Data.Maybe.Utils (forceMaybe)
 import Data.String (IsString)
 import GHC.Generics (Generic)
 import Text.Printf (printf)
-import WeissNamedScratchpad
-import qualified WeissWindowOperations as Op
+import Utils
+import WeissWindowOperations qualified as Op
 import XMonad
 import XMonad.Actions.ShowText (flashText)
 import XMonad.Actions.SwapWorkspaces (swapWithCurrent, swapWorkspaces)
 import XMonad.Actions.WorkspaceNames (getCurrentWorkspaceName, getWorkspaceName)
-import qualified XMonad.StackSet as W
+import XMonad.StackSet qualified as W
 import XMonad.Util.EZConfig (parseKey, parseKeyCombo)
-import qualified XMonad.Util.ExtensibleState as XS
+import XMonad.Util.ExtensibleState qualified as XS
 import XMonad.Util.Loggers
+import XMonad.Util.NamedScratchpad (scratchpadWorkspaceTag)
 
 type Key = String
 type FamilyName = String
@@ -161,7 +162,7 @@ workspaceKeys' =
   , (prefix, effect) <-
       [ ([], switch)
       , (["<Escape>"], shift)
-      , (["<Space>"], shift <> switchOrFocus)
+      , (["<Space>"], shift <> switchOrFocusE)
       , (["<Home>"], swap)
       ]
   ]
@@ -173,7 +174,7 @@ workspaceKeys' =
     labeldFamilyMember = [(f, m) | f <- allLabeledFamilies, m <- allFamilyMembers]
     switch = WsEffect (windows . W.greedyView) True
     shift = WsEffect (windows . W.shift) False
-    switchOrFocus = WsEffect Op.switchOrFocus True
+    switchOrFocusE = WsEffect switchOrFocus True
     swap = WsEffect (windows . swapWithCurrent) True
 
 workspaceKeys :: [(String, X ())]
@@ -197,9 +198,6 @@ swapElements n m (x : xs)
   | n == x = m : swapElements n m xs
   | m == x = n : swapElements n m xs
   | otherwise = x : swapElements n m xs
-
-numToKey :: Int -> String
-numToKey s = ["m", ",", ".", "j", "k", "l", "u", "i", "o", "-"] !! (s - 1)
 
 myWorkspaces = [idWithMember f m | f <- allFamilies, m <- allFamilyMembers]
 

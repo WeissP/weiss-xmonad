@@ -1,14 +1,15 @@
 module WeissXmobar where
 
+import Config
 import Data.Functor ((<&>))
 import Data.List
 import Data.List.Utils
-import WeissLogger
+import Utils
 import WorkspaceFamily (logWorkspaceFamilies)
 import XMonad
 import XMonad.Hooks.StatusBar
 import XMonad.Hooks.StatusBar.PP
-import qualified XMonad.StackSet as W
+import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
 import XMonad.Util.NamedWindows
 
