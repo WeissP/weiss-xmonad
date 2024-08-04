@@ -30,7 +30,7 @@ timeNSP =
     "emacs --file /home/weiss/Documents/notes/misc/notes/20240428T091509--time-tracking.org --title '[Scratchpad] time-tracking'"
     (title =? "[Scratchpad] time-tracking")
     floatTimeTracking
-pavuNSP = NS "pavu" "pavucontrol" (className =? "Pavucontrol") niceFloating
+pavuNSP = NS "pavu" "pavucontrol" (className =? "pavucontrol") niceFloating
 
 myScratchPads :: [NamedScratchpad]
 myScratchPads = [termNSP, timeNSP, pavuNSP]
