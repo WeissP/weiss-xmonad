@@ -8,6 +8,7 @@ import Data.List
 import Data.Maybe
 import System.IO (hPutStrLn)
 import Text.Regex
+import TreeActions
 import Utils
 import WeissPromptPass
 import WeissScratchpad
@@ -16,6 +17,7 @@ import WeissXmobar
 import WorkspaceFamily
 import XMonad
 import XMonad.Actions.CycleWS
+import XMonad.Actions.EasyMotion (EasyMotionConfig (..), selectWindow)
 import XMonad.Actions.MouseResize
 import XMonad.Actions.ShowText (flashText, handleTimerEvent)
 import XMonad.Hooks.DynamicLog
@@ -30,6 +32,7 @@ import XMonad.Layout.MultiColumns
 import XMonad.Layout.NoBorders
 import XMonad.Layout.NoFrillsDecoration
 import XMonad.Layout.PerScreen (ifWider)
+import XMonad.Layout.ResizableThreeColumns (ResizableThreeCol (..))
 import XMonad.Layout.Spacing
 import XMonad.Layout.StackTile
 import XMonad.Layout.TwoPane
@@ -95,6 +98,7 @@ myLayout =
               (myMulCol ||| myTall ||| Full)
               (Mirror myTall ||| myStackTile ||| Full)
   where
+    threeCol = ResizableThreeCol 1 (3 / 100) (1 / 3) []
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
     myTall = Tall nmaster delta ratio
@@ -113,10 +117,10 @@ myKeys =
   , ("<XF86Launch8>", nextScreen)
   , ("<F6>", curNSP)
   , ("<F11>", withFocused toggleFloat)
-  , ("<XF86Launch6>", weissSwapMaster)
+  , ("<XF86Launch6>", weissSwitchFocus)
   , ("M-<Escape>", kill)
-  , ("M-1", weissFocusUp)
-  , ("M-2", weissFocusDown)
+  , ("M-1", weissTreeActions)
+  , ("M-2", easySwap)
   , ("M-<Up>", sendMessage Shrink)
   , ("M-<Down>", sendMessage Expand)
   , ("M-k", spawn myTerminal)
@@ -209,8 +213,3 @@ runXmonad xmobarDir = do
       ewmh $
         withEasySB (xmobarVertical xmobarDir <> xmobarHori xmobarDir) defToggleStrutsKey $
           docks myConfig
-
--- myFocusUp, myFocusDown, mySwapMaster :: X ()
--- myFocusUp = myFocusUpWithNSP myScratchPads
--- myFocusDown = myFocusDownWithNSP myScratchPads
--- mySwapMaster = mySwapMasterWithNsp myScratchPads

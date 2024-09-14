@@ -1,16 +1,32 @@
 {-# LANGUAGE LambdaCase #-}
 
-module WeissWindowOperations (weissFocusDown, weissFocusUp, weissSwapMaster) where
+module WeissWindowOperations (weissFocusDown, weissFocusUp, weissSwapMaster, easySwap, weissSwitchFocus) where
 
+import Data.List qualified as L
 import Data.List.Unique
 import Data.Map qualified
 import Data.Map qualified as M
+import Data.Map qualified as Map
 import Data.Maybe
+import TreeActions (weissTreeActions)
 import Utils
 import WeissScratchpad
 import XMonad
+import XMonad (windowset)
+import XMonad.Actions.EasyMotion (
+  ChordKeys (..),
+  EasyMotionConfig (..),
+  selectWindow,
+  textSize,
+ )
+import XMonad.Actions.FocusNth (swapNth)
 import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
+
+onWindowsCount :: (Int -> X ()) -> X ()
+onWindowsCount f = do
+  winCount <- length . W.index . windowset <$> get
+  f winCount
 
 handleOp :: X () -> X () -> X ()
 handleOp handleNSP handleNormal = withFocused $ \w ->
@@ -20,7 +36,7 @@ handleOp handleNSP handleNormal = withFocused $ \w ->
     (ifM (isFloating w) (return ()) handleNormal)
 
 weissFocusDown :: X ()
-weissFocusDown = handleOp nextNSP weissFocusDown_
+weissFocusDown = handleOp weissTreeActions weissFocusDown_
 
 weissFocusDown_ :: X ()
 weissFocusDown_ = do
@@ -96,3 +112,30 @@ weissSwapMaster_ = do
       W.Stack r1 (l : up) (r2 : down) -> W.Stack r2 [r1] (l : down)
       W.Stack l [] (r1 : r2 : down) -> W.Stack l [] (r2 : r1 : down)
       _ -> swapBetweenMasterAndSlave stack
+
+easyMotionConf :: EasyMotionConfig
+easyMotionConf =
+  def
+    { overlayF = textSize
+    , cancelKey = xK_Escape
+    , sKeys =
+        PerScreenKeys
+          ( Map.fromList
+              [ (0, [xK_j, xK_k, xK_l, xK_u, xK_i, xK_o])
+              , (1, [xK_m, xK_n, xK_h, xK_y])
+              ]
+          )
+    }
+
+easySwap :: X ()
+easySwap = do
+  win <- selectWindow easyMotionConf
+  stack <- gets $ W.index . windowset
+  let match = L.find ((win ==) . Just . fst) $ zip stack [0 ..]
+  whenJust match $ swapNth . snd
+
+weissSwitchFocus :: X ()
+weissSwitchFocus = onWindowsCount $ \c ->
+  if c <= 3
+    then windows $ \s -> skipFloating s W.focusDown
+    else selectWindow easyMotionConf >>= (`whenJust` windows . W.focusWindow)

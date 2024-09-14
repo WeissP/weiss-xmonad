@@ -85,6 +85,7 @@ library
     WeissXmobar
     WeissXMonad
     WorkspaceFamily
+    TreeActions
 
   build-depends:
     , base
@@ -100,4 +101,4 @@ library
     , unix
     , unordered-containers
     , xmonad
-    , xmonad-contrib
+    , xmonad-contrib >= 0.18.1

@@ -2,16 +2,20 @@ module WeissScratchpad where
 
 import Config
 import Control.Monad (liftM)
-import Control.Monad.Extra (andM, firstJustM)
+import Control.Monad.Extra (andM, firstJustM, unlessM, whenJustM, whenM)
 import Control.Monad.Trans.Maybe
 import Data.Foldable.Extra (findM)
 import Data.Functor (void)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
+import Data.Tree (Tree (Node))
 import Utils
 import XMonad
+import XMonad.Actions.GridSelect (runSelectedAction)
 import XMonad.Actions.ShowText (flashText)
+import XMonad.Actions.TreeSelect (TSNode (..), treeselectAction)
+import XMonad.Actions.WithAll (withAll)
 import XMonad.Hooks.ManageHelpers
-import XMonad.Prelude (Endo (..))
+import XMonad.Prelude (Endo (..), catMaybes, (<&>))
 import XMonad.StackSet qualified as W
 import XMonad.Util.ExtensibleState qualified as XS
 import XMonad.Util.Loggers
@@ -67,6 +71,12 @@ instance ExtensionClass CurrentScratchpadName where
 findNSP :: Window -> X (Maybe NamedScratchpad)
 findNSP w = findM (\(NS {..}) -> runQuery query w) myScratchPads
 
+hideAllNSP :: X ()
+hideAllNSP = withAll $ \w ->
+  whenJustM
+    (findNSP w)
+    (\(NS name _ _ _) -> namedScratchpadAction myScratchPads name)
+
 isNSP :: Window -> X Bool
 isNSP w = isJust <$> findNSP w
 
@@ -82,7 +92,10 @@ curNSP_ = do
   namedScratchpadAction myScratchPads cur
 
 curNSP :: X ()
-curNSP = curNSP_ >> repositionNSP
+curNSP = withFocused $ \w -> do
+  curNSP_
+  unlessM (isNSP w) $
+    withFocused (\newW -> unlessM (isNSP newW) curNSP_)
 
 initialNSP :: X ()
 initialNSP = do
@@ -103,3 +116,9 @@ prevNSP = do
   let prev = dropWhile (/= cur) (cycle (reverse myScratchpadNames)) !! 1
   namedScratchpadAction myScratchPads prev
   XS.put (CurrentScratchpadName prev)
+
+switchNSP :: String -> X ()
+switchNSP name = do
+  hideAllNSP
+  namedScratchpadAction myScratchPads name
+  XS.put (CurrentScratchpadName name)
