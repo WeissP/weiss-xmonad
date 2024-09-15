@@ -3,6 +3,7 @@ module Utils where
 import Config
 import Control.Monad (liftM)
 import Control.Monad.Trans.Maybe
+import Data.Functor ((<&>))
 import Data.List qualified as L
 import Data.List.Unique (allUnique)
 import Data.Map qualified as Map
@@ -13,6 +14,12 @@ import XMonad.Prelude (Endo (..))
 import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
 import XMonad.Util.NamedWindows
+import XMonad.Util.PureX (curScreenId)
+
+onWindowsCount :: (Int -> X ()) -> X ()
+onWindowsCount f = do
+  winCount <- length . W.index . windowset <$> get
+  f winCount
 
 liftMaybeT :: (Monad m) => m a -> MaybeT m a
 liftMaybeT act = MaybeT $ Just `liftM` act
@@ -75,11 +82,23 @@ logWindowCount = withWindowSet ct
                     W.current ss
 
 logMaster :: X Bool
-logMaster = withWindowSet isMaster
+logMaster = withWindowSet isM
   where
-    isMaster ss = return $ case W.stack . W.workspace . W.current $ ss of
+    isM ss = return $ case W.stack . W.workspace . W.current $ ss of
       Just (W.Stack _ [] _) -> True
       _ -> False
+
+withFocusedG :: (Window -> X a) -> X (Maybe a)
+withFocusedG f = withWindowSet $ mapM f . W.peek
+
+logFocusedScreenRect :: X Rectangle
+logFocusedScreenRect = withWindowSet $ return . screenRect . W.screenDetail . W.current
+
+logWinCount :: X Int
+logWinCount = length . W.index . windowset <$> get
+
+logIsVerticalScreen :: X Bool
+logIsVerticalScreen = curScreenId <&> isScreenVertical
 
 trimPrefixWithList :: [String] -> Maybe String -> Maybe String
 trimPrefixWithList _ Nothing = Nothing

@@ -3,9 +3,8 @@ module TreeActions where
 import Data.Map qualified as Map
 import Data.Tree (Tree (..))
 import WeissScratchpad (myScratchPads, switchNSP)
-import XMonad (def, spawn)
+import XMonad
 import XMonad.Actions.TreeSelect
-import XMonad.Config.Prime
 import XMonad.Prelude ((<&>))
 import XMonad.Util.NamedScratchpad (NamedScratchpad (NS))
 
@@ -48,9 +47,9 @@ weissTreeActions =
     myTreeConf
     $ [ Node
           (TSNode "System" "System operations" (return ()))
-          [ Node (TSNode "Shutdown" "Poweroff the system" (spawn "shutdown")) []
-          , Node (TSNode "Reboot" "Reboot the system" (spawn "shutdown")) []
-          , Node (TSNode "Suspend" "Suspend the system" (spawn "shutdown")) []
+          [ Node (TSNode "Shutdown" "Poweroff the system" (spawn " sudo shutdown now")) []
+          , Node (TSNode "Reboot" "Reboot the system" (spawn "sudo reboot")) []
+          , Node (TSNode "Suspend" "Suspend the system" (spawn "sudo suspend")) []
           ]
       ]
       <> scratchpadActions
@@ -58,6 +57,5 @@ weissTreeActions =
     scratchpadActions =
       myScratchPads <&> \(NS name _ _ _) ->
         Node
-          ( TSNode name ("Activate scratchpad " <> name) (switchNSP name)
-          )
+          (TSNode name ("Activate scratchpad " <> name) (switchNSP name))
           []

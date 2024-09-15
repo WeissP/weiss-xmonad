@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Redundant return" #-}
-module WeissXMonad (runXmonad) where
+module WeissXMonad (runXmonad, module XMonad) where
 
 import Config
 import Data.List
@@ -25,9 +25,11 @@ import XMonad.Hooks.DynamicProperty
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
+import XMonad.Hooks.RefocusLast (refocusLastLogHook)
 import XMonad.Hooks.StatusBar
 import XMonad.Layout.Accordion
 import XMonad.Layout.LayoutModifier
+import XMonad.Layout.MouseResizableTile (MouseResizableTile (..), mouseResizableTile)
 import XMonad.Layout.MultiColumns
 import XMonad.Layout.NoBorders
 import XMonad.Layout.NoFrillsDecoration
@@ -35,6 +37,7 @@ import XMonad.Layout.PerScreen (ifWider)
 import XMonad.Layout.ResizableThreeColumns (ResizableThreeCol (..))
 import XMonad.Layout.Spacing
 import XMonad.Layout.StackTile
+import XMonad.Layout.ThreeColumns (ThreeCol (..))
 import XMonad.Layout.TwoPane
 import XMonad.Layout.WindowArranger
 import XMonad.Layout.WindowNavigation
@@ -95,10 +98,10 @@ myLayout =
           windowArrange $
             ifWider
               1500
-              (myMulCol ||| myTall ||| Full)
-              (Mirror myTall ||| myStackTile ||| Full)
+              (threeCol ||| Full)
+              (mouseResizableTile {isMirrored = True, masterFrac = 0.7} ||| Full)
   where
-    threeCol = ResizableThreeCol 1 (3 / 100) (1 / 3) []
+    threeCol = ResizableThreeColMid 1 (3 / 100) (1 / 3) []
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
     myTall = Tall nmaster delta ratio
@@ -120,7 +123,7 @@ myKeys =
   , ("<XF86Launch6>", weissSwitchFocus)
   , ("M-<Escape>", kill)
   , ("M-1", weissTreeActions)
-  , ("M-2", easySwap)
+  , ("M-2", weissSwap)
   , ("M-<Up>", sendMessage Shrink)
   , ("M-<Down>", sendMessage Expand)
   , ("M-k", spawn myTerminal)
@@ -193,14 +196,15 @@ myConfig =
   def
     { modMask = myModMask
     , terminal = myTerminal
-    , -- , startupHook        = myStartupHook
-      manageHook = myManageHook
+    , manageHook = myManageHook
     , workspaces = myWorkspaces
-    , borderWidth = myBorderWidth
+    , -- , logHook = scratchpadLogHook
+      borderWidth = myBorderWidth
     , layoutHook = myLayout
     , normalBorderColor = myNormColor
     , focusedBorderColor = myFocusColor
-    , startupHook = return () >> checkKeymap myConfig myKeys -- return () to avoid infinite mutual recursion
+    , -- return () to avoid infinite mutual recursion
+      startupHook = return () >> checkKeymap myConfig myKeys >> scratchpadsExclusives
     , handleEventHook = handleEventHook def <> handleTimerEvent
     }
     -- `removeKeysP` ["M-4"]

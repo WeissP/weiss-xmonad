@@ -20,3 +20,7 @@ myFocusColor = "#46d9ff" -- Border color of focused windows
 
 myModMask :: KeyMask
 myModMask = mod4Mask
+
+isScreenVertical :: ScreenId -> Bool
+isScreenVertical 1 = True
+isScreenVertical _ = False

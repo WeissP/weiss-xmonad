@@ -1,7 +1,0 @@
-[[commands]]
-name = "doc"
-command = '''
-echo http://127.0.0.1:9898
-hoogle serve -p 9898 --local
-          '''
-help = "run hoogle server locally for documentation"
