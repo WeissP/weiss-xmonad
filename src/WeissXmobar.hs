@@ -57,13 +57,14 @@ toPPExtras =
 replaceSymbol :: String -> String
 replaceSymbol = replace "Ʀ" "R"
 
+myTitles :: Logger
 myTitles =
   myLogTitles
     " "
-    (fn1 $ blue " ⯰ ")
+    (fn1 $ blue " | ")
     (wrap (lowWhite "[") (lowWhite "]") . white . show)
     (magenta . replaceSymbol)
-    ( intercalate (fn1 $ yellow " ⯰ ")
+    ( intercalate (fn1 $ yellow " | ")
         . map (yellow . replaceSymbol . ppWindow unfocusedTitleLength)
     )
 
@@ -84,6 +85,7 @@ workspacePP =
     , ppUrgent = red . wrap (yellow "!") (yellow "!")
     , ppOrder = \(ws : l : _ : wsFamilies : _) -> [wsFamilies, ws, l]
     , ppExtras = [logWorkspaceFamilies]
+    , ppLayout = trimLayoutModifiers
     -- , ppRename = \s ws -> fn1 s
     }
 

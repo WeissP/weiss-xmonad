@@ -23,7 +23,7 @@ import XMonad.Util.ExtensibleState qualified as XS
 import XMonad.Util.Loggers
 import XMonad.Util.NamedScratchpad
 
-termNSP, timeNSP, pavuNSP :: NamedScratchpad
+termNSP, timeNSP, pavuNSP, scratchNSP :: NamedScratchpad
 termNSP =
   NS
     "wezterm"
@@ -33,13 +33,19 @@ termNSP =
 timeNSP =
   NS
     "time-tracking"
-    "emacs --file /home/weiss/Documents/notes/misc/notes/20240428T091509--time-tracking.org --title '[Scratchpad] time-tracking'"
+    "Exec=GTK_IM_MODULE= QT_IM_MODULE= XMODIFIERS= emacs --file /home/weiss/Documents/notes/misc/notes/20240428T091509--time-tracking.org --title '[Scratchpad] time-tracking'"
     (title =? "[Scratchpad] time-tracking")
     floatTimeTracking
+scratchNSP =
+  NS
+    "scratch"
+    "Exec=GTK_IM_MODULE= QT_IM_MODULE= XMODIFIERS= emacs --title '[Scratchpad] scratch'"
+    (title =? "[Scratchpad] scratch")
+    niceFloating
 pavuNSP = NS "pavu" "pavucontrol" (className =? "pavucontrol") niceFloating
 
 myScratchPads :: [NamedScratchpad]
-myScratchPads = [termNSP, timeNSP, pavuNSP]
+myScratchPads = [termNSP, timeNSP, pavuNSP, scratchNSP]
 
 myScratchpadNames :: [String]
 myScratchpadNames = name <$> myScratchPads
@@ -64,11 +70,13 @@ niceFloating = do
   let r = W.RationalRect
   isV <- liftX logIsVerticalScreen
   isM <- liftX logMaster
-  layout <- liftX logLayout <&> trimLayoutModifiers
-  c <- liftX logWinCount
+  layout <- liftX logLayout <&> fmap trimLayoutModifiers
+  c <- liftX logWinCount <&> (\c -> c - 1) -- exclude the NSP window
   doRectFloat $ case (isV, isM, layout) of
     (False, False, Just l)
-      | c == 3 && "ThreeCol" `isInfixOf` l ->
+      | c == 3 && "ThreeCol" `isInfixOf` l -> r (33 / 100) (6 / 50) (32 / 100) (25 / 50)
+    (False, False, Just l)
+      | c == 2 && "ThreeCol" `isInfixOf` l ->
           r (1 / 100) (6 / 50) (30 / 100) (25 / 50)
     (False, _, _) -> r (66 / 100) (6 / 50) (33 / 100) (25 / 50)
     -- (_, Just "StackTile") -> r (1 / 50) (26 / 50) (45 / 50) (20 / 50)

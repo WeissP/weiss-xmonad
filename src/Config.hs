@@ -2,8 +2,8 @@ module Config where
 
 import XMonad
 
-totalTitlesLength, unfocusedTitleLength :: Int
-totalTitlesLength = 90
+focusedTitleLength, unfocusedTitleLength :: Int
+focusedTitleLength = 40
 unfocusedTitleLength = 30
 
 myTerminal :: String

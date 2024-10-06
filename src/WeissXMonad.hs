@@ -99,7 +99,7 @@ myLayout =
             ifWider
               1500
               (threeCol ||| Full)
-              (mouseResizableTile {isMirrored = True, masterFrac = 0.7} ||| Full)
+              (Mirror threeCol ||| mouseResizableTile {isMirrored = True, masterFrac = 0.7} ||| Full)
   where
     threeCol = ResizableThreeColMid 1 (3 / 100) (1 / 3) []
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
@@ -120,10 +120,10 @@ myKeys =
   , ("<XF86Launch8>", nextScreen)
   , ("<F6>", curNSP)
   , ("<F11>", withFocused toggleFloat)
-  , ("<XF86Launch6>", weissSwitchFocus)
+  , ("<XF86Launch6>", weissSwap)
   , ("M-<Escape>", kill)
   , ("M-1", weissTreeActions)
-  , ("M-2", weissSwap)
+  , ("M-2", weissSwitchFocus)
   , ("M-<Up>", sendMessage Shrink)
   , ("M-<Down>", sendMessage Expand)
   , ("M-k", spawn myTerminal)

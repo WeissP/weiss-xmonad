@@ -24,12 +24,25 @@ import XMonad.StackSet (focusWindow)
 import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
 
-easyMotionConf :: EasyMotionConfig
+easyMotionConf, rightHandMotionConf, leftHandMotionConf :: EasyMotionConfig
 easyMotionConf =
   def
     { overlayF = textSize
     , cancelKey = xK_Escape
-    , sKeys =
+    }
+rightHandMotionConf =
+  easyMotionConf
+    { sKeys =
+        PerScreenKeys
+          ( Map.fromList
+              [ (0, [xK_f, xK_d, xK_s, xK_r, xK_e, xK_w])
+              , (1, [xK_x, xK_c, xK_v, xK_a])
+              ]
+          )
+    }
+leftHandMotionConf =
+  easyMotionConf
+    { sKeys =
         PerScreenKeys
           ( Map.fromList
               [ (0, [xK_j, xK_k, xK_l, xK_u, xK_i, xK_o])
@@ -41,9 +54,9 @@ easyMotionConf =
 weissSwap :: X ()
 weissSwap = onWindowsCount $ \c ->
   if c <= 2
-    then windows W.swapDown
+    then windows W.swapDown >> windows W.focusDown
     else withFocused $ \focused -> do
-      win <- selectWindow easyMotionConf
+      win <- selectWindow leftHandMotionConf
       stack <- gets $ W.index . windowset
       let match = L.find ((win ==) . Just . fst) $ zip stack [0 ..]
       whenJust match $ \(_, idx) -> swapNth idx >> focus focused
@@ -52,4 +65,4 @@ weissSwitchFocus :: X ()
 weissSwitchFocus = onWindowsCount $ \c ->
   if c <= 3
     then windows $ \s -> skipFloating s W.focusDown
-    else selectWindow easyMotionConf >>= (`whenJust` windows . W.focusWindow)
+    else selectWindow rightHandMotionConf >>= (`whenJust` windows . W.focusWindow)

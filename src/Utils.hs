@@ -41,6 +41,8 @@ toggleFloat w =
 (^=?) :: (Eq a) => Query [a] -> [a] -> Query Bool
 q ^=? x = L.isPrefixOf x <$> q
 
+
+
 -- receive one sperate and three funs to format count, focused window and unfocused window
 myLogTitles ::
   String ->
@@ -62,7 +64,7 @@ myLogTitles sep1 sep2 formatCount formatFoc formatUnfoc = do
     Just justFoc ->
       (sep1 ++)
         . formatFoc
-        . shorten (totalTitlesLength - (count - 1) * unfocusedTitleLength)
+        . shorten focusedTitleLength
         . show
         <$> getName justFoc
     Nothing -> pure ""
@@ -100,13 +102,13 @@ logWinCount = length . W.index . windowset <$> get
 logIsVerticalScreen :: X Bool
 logIsVerticalScreen = curScreenId <&> isScreenVertical
 
-trimPrefixWithList :: [String] -> Maybe String -> Maybe String
-trimPrefixWithList _ Nothing = Nothing
-trimPrefixWithList xs (Just s) = case mapMaybe (`L.stripPrefix` s) xs of
-  [] -> Just s
-  n : _ -> trimPrefixWithList xs (Just n)
+trimPrefixWithList :: [String] ->  String ->  String
+-- trimPrefixWithList _ Nothing = Nothing
+trimPrefixWithList xs s = case mapMaybe (`L.stripPrefix` s) xs of
+  [] ->  s
+  n : _ -> trimPrefixWithList xs n
 
-trimLayoutModifiers :: Maybe String -> Maybe String
+trimLayoutModifiers ::  String ->  String
 trimLayoutModifiers = trimPrefixWithList ["Spacing", " "]
 
 isMaster :: W.StackSet i l a s sd -> Bool
