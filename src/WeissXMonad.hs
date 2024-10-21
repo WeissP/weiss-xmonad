@@ -175,7 +175,7 @@ myManageHook =
           , [className =? x --> doCenterFloat | x <- myCenterFloatClass]
           , [title =? x --> doCenterFloat | x <- myCenterFloatTitle]
           , [title *=? x --> doCenterFloat | x <- myCenterFloatTitleReg]
-          , [className =? x --> doFullFloat | x <- myFullFloatClass]
+          , [className *=? x --> doFullFloat | x <- myFullFloatClass]
           ]
       )
   where
@@ -189,7 +189,7 @@ myManageHook =
       ["Blueman-manager", "zoom", "Pavucontrol", "SimpleScreenRecorder"]
     myCenterFloatTitle = ["tmux-Scratchpad", "flameshot"]
     myCenterFloatTitleReg = []
-    myFullFloatClass = ["MPlayer", "mpv"]
+    myFullFloatClass = ["MPlayer", "mpv", "steam_app_.*"]
     netName = stringProperty "_NET_WM_NAME"
 
 myConfig =
