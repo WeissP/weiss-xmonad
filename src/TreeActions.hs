@@ -45,14 +45,14 @@ myTreeConf =
 weissTreeActions =
   treeselectAction
     myTreeConf
-    $ [ Node
-          (TSNode "System" "System operations" (return ()))
-          [ Node (TSNode "Shutdown" "Poweroff the system" (spawn " sudo shutdown now")) []
-          , Node (TSNode "Reboot" "Reboot the system" (spawn "sudo reboot")) []
-          , Node (TSNode "Suspend" "Suspend the system" (spawn "sudo systemctl suspend")) []
-          ]
-      ]
-      <> scratchpadActions
+    $ scratchpadActions
+      <> [ Node
+            (TSNode "System" "System operations" (return ()))
+            [ Node (TSNode "Shutdown" "Poweroff the system" (spawn " sudo shutdown now")) []
+            , Node (TSNode "Reboot" "Reboot the system" (spawn "sudo reboot")) []
+            , Node (TSNode "Suspend" "Suspend the system" (spawn "sudo systemctl suspend")) []
+            ]
+         ]
   where
     scratchpadActions =
       myScratchPads <&> \(NS name _ _ _) ->
