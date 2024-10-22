@@ -45,7 +45,7 @@ scratchNSP =
 pavuNSP = NS "pavu" "pavucontrol" (className =? "pavucontrol") niceFloating
 
 myScratchPads :: [NamedScratchpad]
-myScratchPads = [termNSP, timeNSP, pavuNSP, scratchNSP]
+myScratchPads = [termNSP, scratchNSP, pavuNSP, timeNSP]
 
 myScratchpadNames :: [String]
 myScratchpadNames = name <$> myScratchPads
