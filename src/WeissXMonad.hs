@@ -100,8 +100,8 @@ myLayout =
               1500
               (threeCol ||| Full)
               (Mirror threeCol ||| mouseResizableTile {isMirrored = True, masterFrac = 0.7} ||| Full)
-  where
-    threeCol = ResizableThreeColMid 1 (3 / 100) (1 / 3) []
+  where 
+    threeCol = ResizableThreeColMid 1 (3 / 100) (3 / 5) []
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
     myTall = Tall nmaster delta ratio
@@ -124,8 +124,8 @@ myKeys =
   , ("M-<Escape>", kill)
   , ("M-1", weissTreeActions)
   , ("M-2", weissSwitchFocus)
-  , ("M-<Up>", sendMessage Shrink)
-  , ("M-<Down>", sendMessage Expand)
+  , ("M-<Left>", sendMessage Shrink)
+  , ("M-<Right>", sendMessage Expand)
   , ("M-k", spawn myTerminal)
   ,
     ( "M-p"
