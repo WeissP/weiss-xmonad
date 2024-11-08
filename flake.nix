@@ -52,10 +52,11 @@
               exactDeps = false;
               withHoogle = true;
               inputsFrom = [
-                (pkgs.devshell.mkShell {
-                  name = "weiss-xmonad";
-                  packages = with pkgs; [ ];
-                })
+                (pkgs.devshell.fromTOML ./devshell.toml)
+                # (pkgs.devshell.mkShell {
+                #   name = "weiss-xmonad";
+                #   packages = with pkgs; [ ];
+                # })
               ];
               tools = {
                 cabal = "latest";
