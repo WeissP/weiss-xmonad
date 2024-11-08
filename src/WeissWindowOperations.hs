@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-module WeissWindowOperations (weissSwap, weissSwitchFocus) where
+module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent) where
 
 import Data.List qualified as L
 import Data.List.Unique
@@ -20,9 +20,13 @@ import XMonad.Actions.EasyMotion (
   textSize,
  )
 import XMonad.Actions.FocusNth (swapNth)
+import XMonad.Actions.GroupNavigation (Direction (..), nextMatch)
 import XMonad.StackSet (focusWindow)
+
+-- import XMonad.StackSet qualified as SS
 import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
+import XMonad.Util.NamedScratchpad (scratchpadWorkspaceTag)
 
 easyMotionConf, rightHandMotionConf, leftHandMotionConf :: EasyMotionConfig
 easyMotionConf =
@@ -62,7 +66,13 @@ weissSwap = onWindowsCount $ \c ->
       whenJust match $ \(_, idx) -> swapNth idx >> focus focused
 
 weissSwitchFocus :: X ()
-weissSwitchFocus = onWindowsCount $ \c ->
-  if c <= 3
-    then windows $ \s -> skipFloating s W.focusDown
-    else selectWindow rightHandMotionConf >>= (`whenJust` windows . W.focusWindow)
+weissSwitchFocus = selectWindow rightHandMotionConf >>= (`whenJust` windows . W.focusWindow)
+
+weissSwitchRecent :: X ()
+weissSwitchRecent = nextMatch History notScratchWs
+  where
+    notScratchWs = do
+      w <- ask
+      ws <- liftX $ gets windowset
+      let tag = W.findTag w ws
+      return $ isJust tag && tag /= Just scratchpadWorkspaceTag

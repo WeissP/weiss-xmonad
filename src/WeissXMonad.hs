@@ -18,6 +18,7 @@ import WorkspaceFamily
 import XMonad
 import XMonad.Actions.CycleWS
 import XMonad.Actions.EasyMotion (EasyMotionConfig (..), selectWindow)
+import XMonad.Actions.GroupNavigation (historyHook)
 import XMonad.Actions.MouseResize
 import XMonad.Actions.ShowText (flashText, handleTimerEvent)
 import XMonad.Hooks.DynamicLog
@@ -100,8 +101,8 @@ myLayout =
               1500
               (threeCol ||| Full)
               (Mirror threeCol ||| mouseResizableTile {isMirrored = True, masterFrac = 0.7} ||| Full)
-  where 
-    threeCol = ResizableThreeColMid 1 (3 / 100) (3 / 5) []
+  where
+    threeCol = ResizableThreeColMid 1 (3 / 100) (-(1 / 3)) []
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
     myTall = Tall nmaster delta ratio
@@ -117,12 +118,12 @@ myKeys =
     , spawn
         "rofi -m -4 -no-lazy-grab -run-command \"zsh -i -c '{cmd}'\" -show run"
     )
-  , ("<XF86Launch8>", nextScreen)
+  , ("<XF86Launch8>", weissTreeActions)
   , ("<F6>", curNSP)
   , ("<F11>", withFocused toggleFloat)
   , ("<XF86Launch6>", weissSwap)
   , ("M-<Escape>", kill)
-  , ("M-1", weissTreeActions)
+  , ("M-1", weissSwitchRecent)
   , ("M-2", weissSwitchFocus)
   , ("M-<Left>", sendMessage Shrink)
   , ("M-<Right>", sendMessage Expand)
@@ -135,7 +136,7 @@ myKeys =
     -- , ("C-<Tab>"      , myFocusDown)
     -- , ("M-4"          , moveFloat $ namedScratchpadAction myScratchPads "tmux")
   ]
-    <> workspaceKeys
+    <> workspaceKeys 
     -- ++ [ ("M-4 " ++ key, fun)
     --    | (key, fun) <-
     --         [ ("v", spawnHereNamedScratchpadAction myScratchPads "pavu")
@@ -153,6 +154,7 @@ myKeys =
           , -- ("f", spawn "fcitx-remote -s fcitx-keyboard-de-nodeadkeys"),
             ("w", spawn "$SCRIPTS_DIR/notify_window_title.sh")
           , ("p", mkPassPrompt "select pass" sendToClj myXPConfig)
+          , ("M-2", nextScreen)
           -- , ("h"      , spawn "rofi-pass")
           -- ("<Left>", sendMessage $ Move L),
           -- ("<Right>", sendMessage $ Move R),
@@ -198,8 +200,8 @@ myConfig =
     , terminal = myTerminal
     , manageHook = myManageHook
     , workspaces = myWorkspaces
-    , -- , logHook = scratchpadLogHook
-      borderWidth = myBorderWidth
+    , logHook = historyHook
+    , borderWidth = myBorderWidth
     , layoutHook = myLayout
     , normalBorderColor = myNormColor
     , focusedBorderColor = myFocusColor

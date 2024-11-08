@@ -18,6 +18,7 @@ import Data.List (
   singleton,
   sort,
  )
+import Data.List qualified as L
 import Data.List.Extra (cons, firstJust, snoc)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Maybe.Utils (forceMaybe)
@@ -27,6 +28,7 @@ import Text.Printf (printf)
 import Utils
 import WeissWindowOperations qualified as Op
 import XMonad
+import XMonad.Actions.CycleWS (nextScreen)
 import XMonad.Actions.ShowText (flashText)
 import XMonad.Actions.SwapWorkspaces (swapWithCurrent, swapWorkspaces)
 import XMonad.Actions.WorkspaceNames (getCurrentWorkspaceName, getWorkspaceName)
@@ -152,20 +154,21 @@ instance ExtensionClass FamilyStore where
 
 workspaceKeys' :: [([String], X ())]
 workspaceKeys' =
-  [ op prefix effect
-  | op <-
-      make membersWithOrder
-        <> make allFamilyMembers
-        <> make allNumberedFamilies
-        <> make allLabeledFamilies
-        <> make labeldFamilyMember
-  , (prefix, effect) <-
-      [ ([], switch)
-      , (["<Escape>"], shift)
-      , (["<Space>"], shift <> switchOrFocusE)
-      , (["<Home>"], swap)
-      ]
-  ]
+  L.concat
+    [ [op prefix effect, op ("<XF86Launch8>" : prefix) (onNextScreen <> effect)]
+    | op <-
+        make membersWithOrder
+          <> make allFamilyMembers
+          <> make allNumberedFamilies
+          <> make allLabeledFamilies
+          <> make labeldFamilyMember
+    , (prefix, effect) <-
+        [ ([], switch)
+        , (["<Escape>"], shift)
+        , (["<Space>"], shift <> switchOrFocusE)
+        , (["<Home>"], swap)
+        ]
+    ]
   where
     toPair n effPrefix eff = (effPrefix <> nodeKeys n, eff `runOn` n)
     make nodes = toPair <$> nodes
@@ -176,6 +179,7 @@ workspaceKeys' =
     shift = WsEffect (windows . W.shift) False
     switchOrFocusE = WsEffect switchOrFocus True
     swap = WsEffect (windows . swapWithCurrent) True
+    onNextScreen = WsEffect (const nextScreen) True
 
 workspaceKeys :: [(String, X ())]
 workspaceKeys = fmap (first $ unwords . cons "<XF86Launch7>") workspaceKeys'
