@@ -27,7 +27,7 @@ termNSP, timeNSP, pavuNSP, scratchNSP :: NamedScratchpad
 termNSP =
   NS
     "wezterm"
-    (myTerminal <> " --config-file $XDG_CONFIG_HOME/wezterm/scratch.lua")
+    (myTerminal <> " --config-file $XDG_CONFIG_HOME/wezterm/scratch.lua start --cwd $HOME/nix-config")
     (title ^=? "[Scratchpad]" <&&> (className =? "org.wezfurlong.wezterm"))
     niceFloating
 timeNSP =
