@@ -16,6 +16,7 @@ import XMonad (windowset)
 import XMonad.Actions.EasyMotion (
   ChordKeys (..),
   EasyMotionConfig (..),
+  bar,
   selectWindow,
   textSize,
  )
@@ -31,7 +32,7 @@ import XMonad.Util.NamedScratchpad (scratchpadWorkspaceTag)
 easyMotionConf, rightHandMotionConf, leftHandMotionConf :: EasyMotionConfig
 easyMotionConf =
   def
-    { overlayF = textSize
+    { overlayF = bar 0.5
     , cancelKey = xK_Escape
     }
 rightHandMotionConf =
