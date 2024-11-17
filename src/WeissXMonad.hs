@@ -21,6 +21,7 @@ import XMonad.Actions.EasyMotion (EasyMotionConfig (..), selectWindow)
 import XMonad.Actions.GroupNavigation (historyHook)
 import XMonad.Actions.MouseResize
 import XMonad.Actions.ShowText (flashText, handleTimerEvent)
+import XMonad.Actions.UpdatePointer (updatePointer)
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.DynamicProperty
 import XMonad.Hooks.EwmhDesktops
@@ -136,7 +137,7 @@ myKeys =
     -- , ("C-<Tab>"      , myFocusDown)
     -- , ("M-4"          , moveFloat $ namedScratchpadAction myScratchPads "tmux")
   ]
-    <> workspaceKeys 
+    <> workspaceKeys
     -- ++ [ ("M-4 " ++ key, fun)
     --    | (key, fun) <-
     --         [ ("v", spawnHereNamedScratchpadAction myScratchPads "pavu")
@@ -200,7 +201,7 @@ myConfig =
     , terminal = myTerminal
     , manageHook = myManageHook
     , workspaces = myWorkspaces
-    , logHook = historyHook
+    , logHook = historyHook >> updatePointer (0.95, 0.5) (0, 0)
     , borderWidth = myBorderWidth
     , layoutHook = myLayout
     , normalBorderColor = myNormColor
