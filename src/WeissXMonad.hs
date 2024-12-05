@@ -209,6 +209,7 @@ myConfig =
     , -- return () to avoid infinite mutual recursion
       startupHook = return () >> checkKeymap myConfig myKeys >> scratchpadsExclusives
     , handleEventHook = handleEventHook def <> handleTimerEvent
+    , focusFollowsMouse = True
     }
     -- `removeKeysP` ["M-4"]
     `additionalKeysP` myKeys

@@ -21,7 +21,7 @@ import XMonad.Actions.EasyMotion (
   textSize,
  )
 import XMonad.Actions.FocusNth (swapNth)
-import XMonad.Actions.GroupNavigation (Direction (..), nextMatch)
+import XMonad.Actions.GroupNavigation (Direction (..), isOnAnyVisibleWS, nextMatch)
 import XMonad.StackSet (focusWindow)
 
 -- import XMonad.StackSet qualified as SS
@@ -70,9 +70,9 @@ weissSwitchFocus :: X ()
 weissSwitchFocus = selectWindow rightHandMotionConf >>= (`whenJust` windows . W.focusWindow)
 
 weissSwitchRecent :: X ()
-weissSwitchRecent = nextMatch History notScratchWs
+weissSwitchRecent = nextMatch History isOnAnyVisibleWS
   where
-    notScratchWs = do
+    _notScratchWs = do
       w <- ask
       ws <- liftX $ gets windowset
       let tag = W.findTag w ws
