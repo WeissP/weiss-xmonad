@@ -207,7 +207,7 @@ myConfig =
     , normalBorderColor = myNormColor
     , focusedBorderColor = myFocusColor
     , -- return () to avoid infinite mutual recursion
-      startupHook = return () >> checkKeymap myConfig myKeys >> scratchpadsExclusives
+      startupHook = return () >> checkKeymap myConfig myKeys >> scratchpadsExclusives >> spawn "systemctl --user start autostart.target"
     , handleEventHook = handleEventHook def <> handleTimerEvent
     , focusFollowsMouse = True
     }
