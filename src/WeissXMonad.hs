@@ -117,9 +117,8 @@ myKeys =
   [
     ( "<XF86Launch5>"
     , spawn
-        "rofi -m -4 -no-lazy-grab -run-list-command '. ~/scripts/zsh_aliases.sh' -run-command "zsh -i -c '{cmd}'" -show run"
+        "rofi -m -4 -no-lazy-grab -run-list-command '. ~/scripts/zsh_aliases.sh' -run-command \"zsh -i -c '{cmd}'\" -show run"
     )
-
   , ("<XF86Launch8>", weissTreeActions)
   , ("<F6>", curNSP)
   , ("<F11>", withFocused toggleFloat)
