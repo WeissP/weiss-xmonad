@@ -63,10 +63,14 @@ weissSwap = onWindowsCount $ \c ->
     else do
       win <- selectWindow leftHandMotionConf
       stack <- gets $ W.index . windowset
+      currentWin <- gets (W.peek . windowset)
       let found = L.find ((win ==) . Just . fst) $ zip stack [0 ..]
       whenJust found $ \(_, idx) -> do
+        let isMasterInvolved = win == Just (head stack) || currentWin == Just (head stack)
         swapNth idx
-        weissFocusMaster
+        if isMasterInvolved
+          then weissFocusMaster
+          else whenJust currentWin (windows . W.focusWindow)
 
 weissSwitchFocus :: X ()
 weissSwitchFocus = selectWindow rightHandMotionConf >>= (`whenJust` windows . W.focusWindow)
