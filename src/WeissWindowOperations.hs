@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent) where
+module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent, weissFocusMaster) where
 
 import Data.List qualified as L
 import Data.List.Unique
@@ -83,3 +83,10 @@ weissSwitchRecent = nextMatch History isOnAnyVisibleWS
       ws <- liftX $ gets windowset
       let tag = W.findTag w ws
       return $ isJust tag && tag /= Just scratchpadWorkspaceTag
+
+-- | Focus the master window of the current workspace
+weissFocusMaster :: X ()
+weissFocusMaster = do
+  stack <- gets $ W.index . windowset
+  unless (null stack) $
+    windows $ W.focusWindow (head stack)
