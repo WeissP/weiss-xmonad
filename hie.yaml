@@ -8,9 +8,3 @@ cradle:
 
     - path: "app"
       config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-exe"}}}
-
-    - path: "test"
-      config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-test"}}}
-
-    - path: "bench"
-      config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-bench"}}}

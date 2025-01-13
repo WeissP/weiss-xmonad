@@ -103,7 +103,7 @@ myLayout =
               (threeCol ||| Full)
               (Mirror threeCol ||| mouseResizableTile {isMirrored = True, masterFrac = 0.7} ||| Full)
   where
-    threeCol = ResizableThreeColMid 1 (3 / 100) (-(1 / 3)) []
+    threeCol = ResizableThreeColMid 1 (1 / 100) (-(1 / 3)) []
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
     myTall = Tall nmaster delta ratio
