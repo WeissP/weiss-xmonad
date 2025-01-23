@@ -40,20 +40,15 @@ rightHandMotionConf =
     { sKeys =
         PerScreenKeys
           ( Map.fromList
-              [ (0, [xK_f, xK_d, xK_s, xK_r, xK_e, xK_w])
-              , (1, [xK_x, xK_c, xK_v, xK_a])
+              [ (0, [xK_f, xK_d, xK_s, xK_r, xK_e, xK_w, xK_g, xK_t])
+              , (1, [xK_x, xK_c, xK_v, xK_b, xK_a, xK_z])
               ]
           )
     }
 leftHandMotionConf =
   easyMotionConf
     { sKeys =
-        PerScreenKeys
-          ( Map.fromList
-              [ (0, [xK_j, xK_k, xK_l, xK_u, xK_i, xK_o])
-              , (1, [xK_m, xK_n, xK_h, xK_y])
-              ]
-          )
+        AnyKeys [xK_j, xK_k, xK_l, xK_u, xK_i, xK_o, xK_m, xK_n, xK_h, xK_y]
     }
 
 weissSwap :: X ()
