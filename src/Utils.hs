@@ -41,8 +41,6 @@ toggleFloat w =
 (^=?) :: (Eq a) => Query [a] -> [a] -> Query Bool
 q ^=? x = L.isPrefixOf x <$> q
 
-
-
 -- receive one sperate and three funs to format count, focused window and unfocused window
 myLogTitles ::
   String ->
@@ -100,15 +98,38 @@ logWinCount :: X Int
 logWinCount = length . W.index . windowset <$> get
 
 logIsVerticalScreen :: X Bool
-logIsVerticalScreen = curScreenId <&> isScreenVertical
+logIsVerticalScreen = do
+  rect <- logFocusedScreenRect
+  return $ rect_height rect > rect_width rect
 
-trimPrefixWithList :: [String] ->  String ->  String
+data ScreenType = Screen1080p | Screen2K | ScreenUltraWide
+  deriving (Show, Eq)
+
+-- | Determine screen type based on physical dimensions and aspect ratio
+logScreenType :: X ScreenType
+logScreenType = do
+  rect <- logFocusedScreenRect
+  isVertical <- logIsVerticalScreen
+  let (w, h) =
+        if isVertical
+          then (rect_height rect, rect_width rect)
+          else (rect_width rect, rect_height rect)
+      aspectRatio = (fromIntegral w :: Double) / fromIntegral h
+  return $
+    if aspectRatio > 2.0
+      then ScreenUltraWide
+      else
+        if w > 2560 -- 2K width threshold
+          then Screen2K
+          else Screen1080p
+
+trimPrefixWithList :: [String] -> String -> String
 -- trimPrefixWithList _ Nothing = Nothing
 trimPrefixWithList xs s = case mapMaybe (`L.stripPrefix` s) xs of
-  [] ->  s
+  [] -> s
   n : _ -> trimPrefixWithList xs n
 
-trimLayoutModifiers ::  String ->  String
+trimLayoutModifiers :: String -> String
 trimLayoutModifiers = trimPrefixWithList ["Spacing", " "]
 
 isMaster :: W.StackSet i l a s sd -> Bool

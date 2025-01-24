@@ -72,18 +72,16 @@ niceFloating = do
   isM <- liftX logMaster
   layout <- liftX logLayout <&> fmap trimLayoutModifiers
   c <- liftX logWinCount <&> (\c -> c - 1) -- exclude the NSP window
-  doRectFloat $ case (isV, isM, layout) of
-    (False, False, Just l)
+  screenType <- liftX logScreenType
+  doRectFloat $ case (isV, isM, layout, screenType) of
+    (False, False, Just l, _)
       | c == 3 && "ThreeCol" `isInfixOf` l -> r (33 / 100) (6 / 50) (32 / 100) (25 / 50)
-    (False, False, Just l)
+    (False, False, Just l, _)
       | c == 2 && "ThreeCol" `isInfixOf` l ->
           r (1 / 100) (6 / 50) (30 / 100) (25 / 50)
-    (False, _, _) -> r (66 / 100) (6 / 50) (33 / 100) (25 / 50)
-    -- (_, Just "StackTile") -> r (1 / 50) (26 / 50) (45 / 50) (20 / 50)
-    -- (True, Just "Mirror Tall") -> r (1 / 50) (26 / 50) (45 / 50) (20 / 50)
-    -- (False, Just "Mirror Tall") -> r (1 / 50) (5 / 50) (45 / 50) (20 / 50)
-    (True, True, _) -> r (1 / 50) (26 / 50) (46 / 50) (20 / 50)
-    (True, False, _) -> r (1 / 50) (3 / 50) (46 / 50) (20 / 50)
+    (False, _, _, _) -> r (66 / 100) (6 / 50) (33 / 100) (25 / 50)
+    (True, True, _, _) -> r (1 / 50) (26 / 50) (46 / 50) (20 / 50)
+    (True, False, _, _) -> r (1 / 50) (3 / 50) (46 / 50) (20 / 50)
 
 newtype CurrentScratchpadName = CurrentScratchpadName String
 instance ExtensionClass CurrentScratchpadName where
