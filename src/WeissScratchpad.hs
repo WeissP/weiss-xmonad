@@ -42,10 +42,10 @@ scratchNSP =
     "Exec=GTK_IM_MODULE= QT_IM_MODULE= XMODIFIERS= emacs --title '[Scratchpad] scratch'"
     (title =? "[Scratchpad] scratch")
     niceFloating
-pavuNSP = NS "pavu" "pavucontrol" (className =? "pavucontrol") niceFloating
+pavuNSP = NS "pwvu" "pwvucontrol" (className =? "pwvucontrol") niceFloating
 
 myScratchPads :: [NamedScratchpad]
-myScratchPads = [termNSP, scratchNSP, pavuNSP, timeNSP]
+myScratchPads = [termNSP, scratchNSP, pavuNSP]
 
 myScratchpadNames :: [String]
 myScratchpadNames = name <$> myScratchPads
