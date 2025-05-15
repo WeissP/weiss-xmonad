@@ -54,7 +54,7 @@ leftHandMotionConf =
 weissSwap :: X ()
 weissSwap = onWindowsCount $ \c ->
   if c <= 2
-    then windows W.swapDown >> windows W.focusDown
+    then windows W.swapDown >> weissFocusMaster
     else do
       win <- selectWindow leftHandMotionConf
       stack <- gets $ W.index . windowset
