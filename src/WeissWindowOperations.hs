@@ -4,8 +4,6 @@ module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent, we
 
 import Data.List qualified as L
 import Data.List.Unique
-import Data.Map qualified
-import Data.Map qualified as M
 import Data.Map qualified as Map
 import Data.Maybe
 import TreeActions (weissTreeActions)
@@ -71,14 +69,40 @@ weissSwap = onWindowsCount $ \c ->
 weissSwitchFocus :: X ()
 weissSwitchFocus = selectWindow rightHandMotionConf >>= (`whenJust` windows . W.focusWindow)
 
+_notScratchWs :: Query Bool
+_notScratchWs = do
+  w <- ask
+  ws <- liftX $ gets windowset
+  let tag = W.findTag w ws
+  return $ isJust tag && tag /= Just scratchpadWorkspaceTag
+
+-- | Get all unfocused floating windows on any visible workspace.
+getUnfocusedVisibleFloats :: X [Window]
+getUnfocusedVisibleFloats = do
+  ws <- gets windowset
+  let visibleWorkspaceTags = map (W.tag . W.workspace) (W.current ws : W.visible ws)
+      allFloatingWindows = W.floating ws
+      onVisible wsTag = wsTag `elem` visibleWorkspaceTags
+      visibleFloatingWindows = Map.filterWithKey (\w _ -> maybe False onVisible (W.findTag w ws)) allFloatingWindows
+      maybeFocused = W.peek ws
+      unfocusedFloats = case maybeFocused of
+        Just focused -> Map.delete focused visibleFloatingWindows
+        Nothing -> visibleFloatingWindows
+  return $ Map.keys unfocusedFloats
+
+{- | A query that matches switchable windows.
+If there are unfocused floating windows on a visible workspace, it matches only those.
+Otherwise, it matches all unfocused tiled windows on visible workspaces.
+-}
+mySwitchableWindows :: Query Bool
+mySwitchableWindows = do
+  unfocusedFloats <- liftX getUnfocusedVisibleFloats
+  if null unfocusedFloats
+    then isOnAnyVisibleWS
+    else fmap (\w -> w `elem` unfocusedFloats) ask
+
 weissSwitchRecent :: X ()
-weissSwitchRecent = nextMatch History isOnAnyVisibleWS
-  where
-    _notScratchWs = do
-      w <- ask
-      ws <- liftX $ gets windowset
-      let tag = W.findTag w ws
-      return $ isJust tag && tag /= Just scratchpadWorkspaceTag
+weissSwitchRecent = nextMatch History mySwitchableWindows
 
 -- | Focus the master window of the current workspace
 weissFocusMaster :: X ()

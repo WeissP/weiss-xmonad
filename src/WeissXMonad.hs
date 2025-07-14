@@ -99,14 +99,20 @@ myLayout =
         mouseResize $
           windowArrange $
             ifWider
-              1500
+              3000
               (threeCol ||| Full)
-              (Mirror threeCol ||| mouseResizableTile {isMirrored = True, masterFrac = 0.7} ||| Full)
+              ( ifWider
+                  1500
+                  (myTall ||| Full)
+                  (Mirror threeCol ||| verticalTall ||| Full)
+              )
   where
-    threeCol = ResizableThreeColMid 1 (1 / 100) (-1 / 3) []
+    threeCol = ResizableThreeColMid 1 (1 / 100) (-(1 / 3)) []
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
-    myTall = Tall nmaster delta ratio
+    -- myTall = Tall nmaster delta ratio
+    myTall = mouseResizableTile {isMirrored = False, masterFrac = 0.55}
+    verticalTall = mouseResizableTile {isMirrored = True, masterFrac = 0.6}
     myStackTile = StackTile 1 (3 / 100) (4 / 9)
     nmaster = 1
     ratio = 1 / 2
@@ -147,15 +153,15 @@ myKeys =
     <> [ ("<XF86Launch7> " <> key, fun)
        | (key, fun) <-
           [ ("t", sendMessage NextLayout)
-          , -- , ("e", pure ())
-            ("r", spawn "xmonad --restart")
-          , ("v", spawn "sh $HOME/.screenlayout/vertical.sh")
-          , ("b", spawn "sh $HOME/.screenlayout/horizontal.sh")
           , ("s", spawn "flameshot gui")
           , -- ("f", spawn "fcitx-remote -s fcitx-keyboard-de-nodeadkeys"),
             ("w", spawn "$SCRIPTS_DIR/notify_window_title.sh")
           , ("p", mkPassPrompt "select pass" sendToClj myXPConfig)
           , ("M-2", nextScreen)
+          -- , ("e", exp1 >>= \x -> flashText def 3 x)
+          -- , ("r", spawn "xmonad --restart")
+          -- , ("v", spawn "sh $HOME/.screenlayout/vertical.sh")
+          -- , ("b", spawn "sh $HOME/.screenlayout/horizontal.sh")
           -- , ("h"      , spawn "rofi-pass")
           -- ("<Left>", sendMessage $ Move L),
           -- ("<Right>", sendMessage $ Move R),
@@ -207,7 +213,7 @@ myConfig =
     , normalBorderColor = myNormColor
     , focusedBorderColor = myFocusColor
     , -- return () to avoid infinite mutual recursion
-      startupHook = return () >> checkKeymap myConfig myKeys >> scratchpadsExclusives >> spawn "systemctl --user start autostart.target"
+      startupHook = return () >> checkKeymap myConfig myKeys >> scratchpadsExclusives >> spawn "sleep 10s && systemctl --user start autostart.target"
     , handleEventHook = handleEventHook def <> handleTimerEvent
     , focusFollowsMouse = True
     }
