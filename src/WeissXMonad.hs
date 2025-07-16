@@ -31,7 +31,7 @@ import XMonad.Hooks.RefocusLast (refocusLastLogHook)
 import XMonad.Hooks.StatusBar
 import XMonad.Layout.Accordion
 import XMonad.Layout.LayoutModifier
-import XMonad.Layout.MouseResizableTile (MouseResizableTile (..), mouseResizableTile)
+import XMonad.Layout.MouseResizableTile (DraggerType (..), MouseResizableTile (..), mouseResizableTile)
 import XMonad.Layout.MultiColumns
 import XMonad.Layout.NoBorders
 import XMonad.Layout.NoFrillsDecoration
@@ -111,8 +111,8 @@ myLayout =
     myMulCol = multiCol [1, 1] 0 0.01 (-0.5)
     twoPane = TwoPane delta ratio
     -- myTall = Tall nmaster delta ratio
-    myTall = mouseResizableTile {isMirrored = False, masterFrac = 0.55}
-    verticalTall = mouseResizableTile {isMirrored = True, masterFrac = 0.6}
+    myTall = mouseResizableTile {isMirrored = False, masterFrac = 0.55, draggerType = BordersDragger}
+    verticalTall = mouseResizableTile {isMirrored = True, masterFrac = 0.6, draggerType = BordersDragger}
     myStackTile = StackTile 1 (3 / 100) (4 / 9)
     nmaster = 1
     ratio = 1 / 2
