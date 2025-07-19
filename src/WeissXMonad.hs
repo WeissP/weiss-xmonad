@@ -62,7 +62,6 @@ import XMonad.Util.Run (
   safeSpawn,
   spawnPipe,
  )
-import XMonad.Util.Ungrab
 
 mylogLayout :: Logger
 mylogLayout = withWindowSet $ return . Just . ld

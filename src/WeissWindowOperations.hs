@@ -8,21 +8,20 @@ import Data.Map qualified as Map
 import Data.Maybe
 import TreeActions (weissTreeActions)
 import Utils
-import WeissScratchpad
-import XMonad
-import XMonad (windowset)
-import XMonad.Actions.EasyMotion (
+import WeissEasyMotion (
   ChordKeys (..),
   EasyMotionConfig (..),
   bar,
   selectWindow,
   textSize,
  )
+import WeissScratchpad
+import XMonad
+import XMonad (windowset)
 import XMonad.Actions.FocusNth (swapNth)
 import XMonad.Actions.GroupNavigation (Direction (..), isOnAnyVisibleWS, nextMatch)
+import XMonad.Prelude ((<&>))
 import XMonad.StackSet (focusWindow)
-
--- import XMonad.StackSet qualified as SS
 import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
 import XMonad.Util.NamedScratchpad (scratchpadWorkspaceTag)
@@ -91,15 +90,22 @@ getUnfocusedVisibleFloats = do
   return $ Map.keys unfocusedFloats
 
 {- | A query that matches switchable windows.
-If there are unfocused floating windows on a visible workspace, it matches only those.
-Otherwise, it matches all unfocused tiled windows on visible workspaces.
+   If there are unfocused floating windows on a visible workspace, it matches only those.
+   Otherwise it matches any window returned by Utils.visibleAllWindows.
 -}
 mySwitchableWindows :: Query Bool
 mySwitchableWindows = do
+  -- first grab every window currently visible (tiled or floating) on any screen
+  visibleWins <- liftX visibleAllWindows
+  -- then see if there are any unfocused floats on those visible workspaces
   unfocusedFloats <- liftX getUnfocusedVisibleFloats
-  if null unfocusedFloats
-    then isOnAnyVisibleWS
-    else fmap (\w -> w `elem` unfocusedFloats) ask
+  -- if none, allow any of the visibleWins; otherwise only allow those unfocused floats
+  ask
+    <&> ( \w ->
+            if null unfocusedFloats
+              then w `elem` visibleWins
+              else w `elem` unfocusedFloats
+        )
 
 weissSwitchRecent :: X ()
 weissSwitchRecent = nextMatch History mySwitchableWindows

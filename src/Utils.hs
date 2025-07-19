@@ -1,20 +1,48 @@
 module Utils where
 
 import Config
-import Control.Monad (liftM)
+import Control.Monad (filterM, liftM)
 import Control.Monad.Trans.Maybe
 import Data.Functor ((<&>))
 import Data.List qualified as L
 import Data.List.Unique (allUnique)
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set qualified as Set
 import XMonad
 import XMonad.Hooks.StatusBar.PP
-import XMonad.Prelude (Endo (..))
+import XMonad.Prelude (Endo (..), WindowScreen)
 import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
 import XMonad.Util.NamedWindows
 import XMonad.Util.PureX (curScreenId)
+
+{- |
+Find all visible windows on a given screen.
+If a full-screen floating window exists, it returns only that window,
+treating all other windows on the same screen as invisible.
+-}
+visibleWindows :: ScreenId -> X [Window]
+visibleWindows sid = do
+  XState {mapped = mappedWins, windowset = ws} <- get
+  -- all windows on the workspace driving this screen
+  let scrn = L.find ((== sid) . W.screen) (W.screens ws)
+      allOnScreen = foldMap (W.integrate' . W.stack . W.workspace) scrn
+      visibleStack = filter (`Set.member` mappedWins) allOnScreen
+      floatMap = W.floating ws
+      -- filter out any full‐screen floating windows
+      fullFloats = filter (\w -> maybe False isFullScreen (Map.lookup w floatMap)) visibleStack
+  -- if a full-screen float exists, show only that; otherwise show the normal list
+  return $ case fullFloats of
+    [] -> visibleStack
+    fs -> fs
+
+-- | Find all visible windows on all screens.
+visibleAllWindows :: X [Window]
+visibleAllWindows = do
+  XState {windowset = ws} <- get
+  let sids = fmap W.screen (W.screens ws)
+  concat <$> mapM visibleWindows sids
 
 onWindowsCount :: (Int -> X ()) -> X ()
 onWindowsCount f = do
@@ -202,3 +230,11 @@ floatOnScreen f =
   ask >>= \w -> doF $ \s -> do
     let sid = W.screen $ W.current s
     W.float w (f sid) s
+
+-- | Returns True if the given RationalRect covers the entire screen
+isFullScreen :: W.RationalRect -> Bool
+isFullScreen (W.RationalRect x y w h) =
+  x == 0
+    && y == 0
+    && w == 1
+    && h == 1
