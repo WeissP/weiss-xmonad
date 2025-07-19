@@ -76,9 +76,11 @@ niceFloating = do
   doRectFloat $ case (isV, isM, layout, screenType) of
     (False, False, Just l, _)
       | c == 3 && "ThreeCol" `isInfixOf` l -> r (33 / 100) (6 / 50) (32 / 100) (25 / 50)
-    (False, False, Just l, _)
+    (False, True, Just l, _)
+      | c == 3 && "ThreeCol" `isInfixOf` l -> r (1 / 100) (6 / 50) (32 / 100) (25 / 50)
+    (False, True, Just l, _)
       | c == 2 && "ThreeCol" `isInfixOf` l ->
-          r (1 / 100) (6 / 50) (30 / 100) (25 / 50)
+          r (67 / 100) (6 / 50) (30 / 100) (25 / 50)
     (False, True, _, _) -> r (56 / 100) (6 / 50) (43 / 100) (35 / 50)
     (False, False, _, _) -> r (3 / 100) (6 / 50) (43 / 100) (35 / 50)
     (True, True, _, _) -> r (1 / 50) (26 / 50) (46 / 50) (20 / 50)
