@@ -1,0 +1,24 @@
+# This stack.yaml is used to build xmonad-contrib with released versions
+# of X11 and xmonad
+
+resolver: lts-21.12
+
+packages:
+- ./
+
+extra-deps:
+- X11-1.10.2
+- xmonad-0.18.0
+
+nix:
+  packages:
+    - pkg-config
+    - xorg.libX11
+    - xorg.libXext
+    - xorg.libXft
+    - xorg.libXrandr
+    - xorg.libXrender
+    - xorg.libXScrnSaver
+
+ghc-options:
+  xmonad-contrib: '-j'
