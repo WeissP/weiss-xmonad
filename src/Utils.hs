@@ -16,33 +16,12 @@ import XMonad.StackSet qualified as W
 import XMonad.Util.Loggers
 import XMonad.Util.NamedWindows
 import XMonad.Util.PureX (curScreenId)
+import XMonad.Util.XUtils (pixelToString)
 
-{- |
-Find all visible windows on a given screen.
-If a full-screen floating window exists, it returns only that window,
-treating all other windows on the same screen as invisible.
--}
-visibleWindows :: ScreenId -> X [Window]
-visibleWindows sid = do
-  XState {mapped = mappedWins, windowset = ws} <- get
-  -- all windows on the workspace driving this screen
-  let scrn = L.find ((== sid) . W.screen) (W.screens ws)
-      allOnScreen = foldMap (W.integrate' . W.stack . W.workspace) scrn
-      visibleStack = filter (`Set.member` mappedWins) allOnScreen
-      floatMap = W.floating ws
-      -- filter out any full‐screen floating windows
-      fullFloats = filter (\w -> maybe False isFullScreen (Map.lookup w floatMap)) visibleStack
-  -- if a full-screen float exists, show only that; otherwise show the normal list
-  return $ case fullFloats of
-    [] -> visibleStack
-    fs -> fs
-
--- | Find all visible windows on all screens.
-visibleAllWindows :: X [Window]
-visibleAllWindows = do
-  XState {windowset = ws} <- get
-  let sids = fmap W.screen (W.screens ws)
-  concat <$> mapM visibleWindows sids
+setWindowBorderColor :: Pixel -> Window -> X ()
+setWindowBorderColor c win = withDisplay $ \dpy -> do
+  colorName <- io (pixelToString dpy c)
+  setWindowBorderWithFallback dpy win colorName c
 
 onWindowsCount :: (Int -> X ()) -> X ()
 onWindowsCount f = do

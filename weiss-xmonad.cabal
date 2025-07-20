@@ -103,7 +103,6 @@ library
     Config
     TreeActions
     Utils
-    WeissEasyMotion
     WeissPromptPass
     WeissScratchpad
     WeissWindowOperations

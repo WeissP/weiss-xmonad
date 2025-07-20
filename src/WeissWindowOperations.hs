@@ -1,30 +1,35 @@
 {-# LANGUAGE LambdaCase #-}
 
-module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent, weissFocusMaster) where
+module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent, weissFocusMaster, borderColorHook) where
 
+import Config (myNormColor, myNormColorPixel, nextFocusColorPixel)
+import Control.Monad (when)
 import Data.List qualified as L
 import Data.List.Unique
 import Data.Map qualified as Map
 import Data.Maybe
 import TreeActions (weissTreeActions)
 import Utils
-import WeissEasyMotion (
+import WeissScratchpad
+import XMonad
+import XMonad (windowset)
+import XMonad.Actions.EasyMotion (
   ChordKeys (..),
   EasyMotionConfig (..),
   bar,
   selectWindow,
   textSize,
  )
-import WeissScratchpad
-import XMonad
-import XMonad (windowset)
 import XMonad.Actions.FocusNth (swapNth)
-import XMonad.Actions.GroupNavigation (Direction (..), isOnAnyVisibleWS, nextMatch)
+import XMonad.Actions.GroupNavigation (Direction (..), isOnAnyVisibleWS, nextMatch, onNextMatch, orderedWindowList)
 import XMonad.Prelude ((<&>))
 import XMonad.StackSet (focusWindow)
 import XMonad.StackSet qualified as W
+import XMonad.Util.ExtensibleState qualified as XS
 import XMonad.Util.Loggers
 import XMonad.Util.NamedScratchpad (scratchpadWorkspaceTag)
+import XMonad.Util.VisibleWindows (visibleWindows, visibleWindowsOnScreen)
+import XMonad.Util.XUtils (stringToPixel)
 
 easyMotionConf, rightHandMotionConf, leftHandMotionConf :: EasyMotionConfig
 easyMotionConf =
@@ -79,7 +84,7 @@ _notScratchWs = do
 getUnfocusedVisibleFloats :: X [Window]
 getUnfocusedVisibleFloats = do
   ws <- gets windowset
-  let visibleWorkspaceTags = map (W.tag . W.workspace) (W.current ws : W.visible ws)
+  let visibleWorkspaceTags = W.tag . W.workspace <$> (W.current ws : W.visible ws)
       allFloatingWindows = W.floating ws
       onVisible wsTag = wsTag `elem` visibleWorkspaceTags
       visibleFloatingWindows = Map.filterWithKey (\w _ -> maybe False onVisible (W.findTag w ws)) allFloatingWindows
@@ -96,7 +101,7 @@ getUnfocusedVisibleFloats = do
 mySwitchableWindows :: Query Bool
 mySwitchableWindows = do
   -- first grab every window currently visible (tiled or floating) on any screen
-  visibleWins <- liftX visibleAllWindows
+  visibleWins <- liftX visibleWindows
   -- then see if there are any unfocused floats on those visible workspaces
   unfocusedFloats <- liftX getUnfocusedVisibleFloats
   -- if none, allow any of the visibleWins; otherwise only allow those unfocused floats
@@ -109,6 +114,27 @@ mySwitchableWindows = do
 
 weissSwitchRecent :: X ()
 weissSwitchRecent = nextMatch History mySwitchableWindows
+
+newtype NextSwitchWindow = NextSwitchWindow (Maybe Window)
+instance ExtensionClass NextSwitchWindow where
+  initialValue = NextSwitchWindow Nothing
+
+updateNextSwitchWindow :: Window -> X ()
+updateNextSwitchWindow w = do
+  currFocusedMaybe <- gets (W.peek . windowset)
+  NextSwitchWindow currNswMaybe <- XS.get
+  case (currFocusedMaybe, currNswMaybe) of
+    (Just _, Just currNsw)
+      | currFocusedMaybe /= currNswMaybe ->
+          setWindowBorderColor myNormColorPixel currNsw
+    _ -> return ()
+  XS.put (NextSwitchWindow (Just w))
+  setWindowBorderColor nextFocusColorPixel w
+
+borderColorHook :: X ()
+borderColorHook = do
+  hisWindows <- orderedWindowList History
+  onNextMatch mySwitchableWindows updateNextSwitchWindow (return ()) hisWindows
 
 -- | Focus the master window of the current workspace
 weissFocusMaster :: X ()
