@@ -1,5 +1,6 @@
 packages:
   ./
+  ./vendor/xmonad-contrib/ 
 
 package weiss-xmonad
   tests: True
