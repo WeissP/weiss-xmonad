@@ -26,7 +26,9 @@ module XMonad.Actions.GroupNavigation ( -- * Usage
                                       , nextMatch
                                       , nextMatchOrDo
                                       , nextMatchWithThis
-                                      , historyHook
+                                      , historyHook 
+                                      , onNextMatch
+                                      , orderedWindowList
 
                                         -- * Utilities
                                         -- $utilities
@@ -128,6 +130,9 @@ focusNextMatchOrDo :: Query Bool -> X () -> Seq Window -> X ()
 focusNextMatchOrDo qry act = findM (runQuery qry)
                              >=> maybe act (windows . SS.focusWindow)
 
+onNextMatch :: Query Bool -> (Window -> X ()) -> X () -> Seq Window -> X ()
+onNextMatch qry matchedAct nonMatchAct = findM (runQuery qry) >=> maybe nonMatchAct matchedAct
+ 
 -- Returns the list of windows ordered by workspace as specified in
 -- @xmonad.hs@.
 orderedWindowList :: Direction -> X (Seq Window)
