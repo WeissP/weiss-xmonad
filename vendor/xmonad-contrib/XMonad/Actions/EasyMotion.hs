@@ -43,10 +43,11 @@ import           XMonad
 import           XMonad.Prelude
 import qualified XMonad.StackSet          as W
 import           XMonad.Util.Font         (releaseXMF, initXMF, Align(AlignCenter), XMonadFont(..), textExtentsXMF)
-import           XMonad.Util.XUtils       (createNewWindow, paintAndWrite, deleteWindow, showWindow)
+import           XMonad.Util.XUtils       (paintAndWrite, deleteWindow, showWindow, createNewWindow)
 
 import           Control.Arrow            ((&&&))
 import qualified Data.Map.Strict as M     (Map, elems, map, mapWithKey)
+import XMonad.Util.VisibleWindows (visibleWindows, visibleWindowsOnScreen)
 
 -- $usage
 --
@@ -256,27 +257,21 @@ handleSelectWindow c = do
   f <- initXMF $ emFont c
   th <- (\(asc, dsc) -> asc + dsc + 2) <$> textExtentsXMF f (concatMap keysymToString (allKeys . sKeys $ c))
   XConf { theRoot = rw, display = dpy } <- ask
-  XState { mapped = mappedWins, windowset = ws } <- get
+  XState { windowset = ws } <- get
   -- build overlays depending on key configuration
   overlays :: [Overlay] <- case sKeys c of
     AnyKeys ks -> buildOverlays ks <$> sortedOverlayWindows
-     where
-      visibleWindows :: [Window]
-      visibleWindows = toList mappedWins
-      sortedOverlayWindows :: X [OverlayWindow]
-      sortedOverlayWindows = sortOverlayWindows <$> buildOverlayWindows th visibleWindows
+      where
+        sortedOverlayWindows :: X [OverlayWindow]
+        sortedOverlayWindows = visibleWindows >>= (fmap sortOverlayWindows . buildOverlayWindows th)
     PerScreenKeys m ->
       fmap concat
         $ sequence
         $ M.elems
         $ M.mapWithKey (\sid ks -> buildOverlays ks <$> sortedOverlayWindows sid) m
-     where
-      screenById :: ScreenId -> Maybe WindowScreen
-      screenById sid = find ((== sid) . W.screen) (W.screens ws)
-      visibleWindowsOnScreen :: ScreenId -> [Window]
-      visibleWindowsOnScreen sid = filter (`elem` toList mappedWins) $ W.integrate' $ screenById sid >>= W.stack . W.workspace
-      sortedOverlayWindows :: ScreenId -> X [OverlayWindow]
-      sortedOverlayWindows sid = sortOverlayWindows <$> buildOverlayWindows th (visibleWindowsOnScreen sid)
+      where
+        sortedOverlayWindows :: ScreenId -> X [OverlayWindow]
+        sortedOverlayWindows sid = visibleWindowsOnScreen sid >>= (fmap sortOverlayWindows . buildOverlayWindows th)
   status <- io $ grabKeyboard dpy rw True grabModeAsync grabModeAsync currentTime
   if status == grabSuccess
     then do
@@ -315,7 +310,12 @@ handleSelectWindow c = do
     Just wAttrs -> do
       let r = overlayF c th $ makeRect wAttrs
       o <- createNewWindow r Nothing "" True
-      return . Just $ OverlayWindow { rect=r, overlay=o, win=w, attrs=wAttrs }
+      dpy <- asks display
+      do
+        atomWmWindowType <- getAtom "_NET_WM_WINDOW_TYPE"
+        atomUtility <- getAtom "_NET_WM_WINDOW_TYPE_UTILITY"
+        io $ changeProperty32 dpy o atomWmWindowType aTOM propModeReplace [fi atomUtility]
+      return . Just $ OverlayWindow {rect = r, overlay = o, win = w, attrs = wAttrs}
 
   -- | Display an overlay with the provided formatting
   displayOverlay :: XMonadFont -> Overlay -> X ()

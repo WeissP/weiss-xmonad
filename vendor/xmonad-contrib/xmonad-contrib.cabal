@@ -414,6 +414,7 @@ library
                         XMonad.Util.WorkspaceCompare
                         XMonad.Util.XSelection
                         XMonad.Util.XUtils
+                        XMonad.Util.VisibleWindows
 
 test-suite tests
   type:           exitcode-stdio-1.0
