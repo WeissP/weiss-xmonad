@@ -303,18 +303,16 @@ handleSelectWindow c = do
 
   makeRect :: WindowAttributes -> Rectangle
   makeRect wa = Rectangle (fi (wa_x wa)) (fi (wa_y wa)) (fi (wa_width wa)) (fi (wa_height wa))
-
+ 
   buildOverlayWin :: Position -> Window -> X (Maybe OverlayWindow)
   buildOverlayWin th w = safeGetWindowAttributes w >>= \case
     Nothing     -> pure Nothing
     Just wAttrs -> do
       let r = overlayF c th $ makeRect wAttrs
       o <- createNewWindow r Nothing "" True
+      -- instead of setting UTILITY window‐type, give it a fixed title
       dpy <- asks display
-      do
-        atomWmWindowType <- getAtom "_NET_WM_WINDOW_TYPE"
-        atomUtility <- getAtom "_NET_WM_WINDOW_TYPE_UTILITY"
-        io $ changeProperty32 dpy o atomWmWindowType aTOM propModeReplace [fi atomUtility]
+      io  $ setClassHint dpy o (ClassHint "Xmonad-easymotion" "Xmonad-easymotion")
       return . Just $ OverlayWindow {rect = r, overlay = o, win = w, attrs = wAttrs}
 
   -- | Display an overlay with the provided formatting
