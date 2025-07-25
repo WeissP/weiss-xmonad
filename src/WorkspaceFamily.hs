@@ -26,6 +26,7 @@ import Data.String (IsString)
 import GHC.Generics (Generic)
 import Text.Printf (printf)
 import Utils
+import WeissWindowOperations (switchScreenBetween)
 import WeissWindowOperations qualified as Op
 import XMonad
 import XMonad.Actions.CycleWS (nextScreen)
@@ -155,7 +156,7 @@ instance ExtensionClass FamilyStore where
 workspaceKeys' :: [([String], X ())]
 workspaceKeys' =
   L.concat
-    [ [op prefix effect, op ("<XF86Launch8>" : prefix) (onNextScreen <> effect)]
+    [ [op prefix effect, op ("<XF86Launch8>" : prefix) (switchScreen01 <> effect), op ("<XF86Launch8>" : "<XF86Launch8>" : prefix) (switchScreen02 <> effect)]
     | op <-
         make membersWithOrder
           <> make allFamilyMembers
@@ -179,7 +180,9 @@ workspaceKeys' =
     shift = WsEffect (windows . W.shift) False
     switchOrFocusE = WsEffect switchOrFocus True
     swap = WsEffect (windows . swapWithCurrent) True
-    onNextScreen = WsEffect (const nextScreen) True
+    _onNextScreen = WsEffect (const nextScreen) True
+    switchScreen01 = WsEffect (const (switchScreenBetween 0 1)) True
+    switchScreen02 = WsEffect (const (switchScreenBetween 0 2)) True
 
 workspaceKeys :: [(String, X ())]
 workspaceKeys = fmap (first $ unwords . cons "<XF86Launch7>") workspaceKeys'

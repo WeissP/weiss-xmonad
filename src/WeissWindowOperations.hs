@@ -1,9 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 
-module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent, weissFocusMaster, borderColorHook) where
+module WeissWindowOperations (weissSwap, weissSwitchFocus, weissSwitchRecent, weissFocusMaster, borderColorHook, switchScreenBetween) where
 
 import Config (myNormColor, myNormColorPixel, nextFocusColorPixel)
 import Control.Monad (when)
+import Control.Monad.Extra (whenJustM)
 import Data.List qualified as L
 import Data.List.Unique
 import Data.Map qualified as Map
@@ -31,21 +32,25 @@ import XMonad.Util.NamedScratchpad (scratchpadWorkspaceTag)
 import XMonad.Util.VisibleWindows (visibleWindows, visibleWindowsOnScreen)
 import XMonad.Util.XUtils (stringToPixel)
 
+switchToScreen :: ScreenId -> X ()
+switchToScreen sid = whenJustM (screenWorkspace sid) (windows . W.view)
+
+switchScreenBetween :: ScreenId -> ScreenId -> X ()
+switchScreenBetween a b = do
+  now <- gets windowset <&> W.screen . W.current
+  when (now /= a && now /= b) (switchToScreen a)
+  if now == b then switchToScreen a else switchToScreen b
+
 easyMotionConf, rightHandMotionConf, leftHandMotionConf :: EasyMotionConfig
 easyMotionConf =
   def
-    { overlayF = bar 0.5
+    { overlayF = bar 0.3
     , cancelKey = xK_Escape
     }
 rightHandMotionConf =
   easyMotionConf
     { sKeys =
-        PerScreenKeys
-          ( Map.fromList
-              [ (0, [xK_f, xK_d, xK_s, xK_r, xK_e, xK_w, xK_g, xK_t])
-              , (1, [xK_x, xK_c, xK_v, xK_b, xK_a, xK_z])
-              ]
-          )
+        AnyKeys [xK_f, xK_d, xK_s, xK_r, xK_e, xK_w, xK_g, xK_t, xK_x, xK_c, xK_v, xK_b, xK_a, xK_z]
     }
 leftHandMotionConf =
   easyMotionConf
@@ -127,6 +132,7 @@ updateNextSwitchWindow w = do
     (Just _, Just currNsw)
       | currFocusedMaybe /= currNswMaybe ->
           setWindowBorderColor myNormColorPixel currNsw
+    (Nothing, Just currNsw) -> setWindowBorderColor myNormColorPixel currNsw
     _ -> return ()
   XS.put (NextSwitchWindow (Just w))
   setWindowBorderColor nextFocusColorPixel w
