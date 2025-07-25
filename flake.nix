@@ -49,6 +49,7 @@
           shellWithToml =
             tomls:
             pkgs.weiss-xmonad.shellFor {
+              packages = ps: [ ps.weiss-xmonad ];
               exactDeps = false;
               withHoogle = true;
               inputsFrom = [
@@ -71,6 +72,7 @@
         // {
           packages = {
             default = flake.packages."weiss-xmonad:exe:weiss-xmonad-exe";
+            weiss-taffybar = flake.packages."weiss-xmonad:exe:weiss-taffybar-exe";
           };
           devShells = {
             default = shellWithToml [ ];
