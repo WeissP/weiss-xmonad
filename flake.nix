@@ -36,7 +36,7 @@
               xmonad = final.xmonad_0_18_0;
               weiss-xmonad = final.haskell-nix.project' {
                 src = ./.;
-                compiler-nix-name = "ghc966";
+                compiler-nix-name = "ghc98";
               };
             })
             devshell.overlays.default

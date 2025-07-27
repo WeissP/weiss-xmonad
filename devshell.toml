@@ -1,3 +1,12 @@
 [[env]]
 name = "HOOGLE_PORT"
 value = "49513"
+
+[[commands]]
+package = "haskellPackages.status-notifier-item"
+name = "status-notifier-watcher"
+
+[[commands]]
+package = "kdePackages.plasma-workspace"
+name = "xembedsniproxy"
+

@@ -8,3 +8,6 @@ cradle:
 
     - path: "app"
       config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-exe"}}}
+
+    - path: "weiss-taffybar"
+      config: {cradle: {cabal: {component: "weiss-xmonad:weiss-taffybar-exe"}}}
