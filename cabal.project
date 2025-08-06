@@ -1,6 +1,7 @@
 packages:
   ./
   ./vendor/xmonad-contrib/ 
+  ./vendor/taffybar/
 
 package weiss-xmonad
   tests: True
