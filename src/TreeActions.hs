@@ -48,7 +48,7 @@ weissTreeActions =
     $ scratchpadActions
       <> [ Node
             (TSNode "System" "System operations" (return ()))
-            [ Node (TSNode "Hybird Sleep" "Suspend+Hibernate the system" (spawn "sudo systemctl hybird-sleep")) []
+            [ Node (TSNode "Hybird Sleep" "Suspend+Hibernate the system" (spawn "sudo systemctl hybrid-sleep")) []
             , Node (TSNode "Hibernate" "Hibernate the system" (spawn "sudo systemctl hibernate")) []
             , Node (TSNode "Suspend" "Suspend the system" (spawn "sudo systemctl suspend")) []
             , Node (TSNode "Reboot" "Reboot the system" (spawn "sudo reboot")) []
