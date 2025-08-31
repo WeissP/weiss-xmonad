@@ -180,9 +180,9 @@ myManageHook =
           , [className =? "p3x-onenote" --> doShift "记3"]
           , [className =? x --> doIgnore | x <- myIgnoreClass]
           , [className =? x --> doHideIgnore | x <- myHideIgnoreClass]
-          , [className =? x --> doCenterFloat | x <- myCenterFloatClass]
-          , [title =? x --> doCenterFloat | x <- myCenterFloatTitle]
-          , [title *=? x --> doCenterFloat | x <- myCenterFloatTitleReg]
+          , [className =? x --> niceFloating | x <- myCenterFloatClass]
+          , [title =? x --> niceFloating | x <- myCenterFloatTitle]
+          , [title *=? x --> niceFloating | x <- myCenterFloatTitleReg]
           , [className *=? x --> doFullFloat | x <- myFullFloatClass]
           ]
       )
@@ -194,7 +194,7 @@ myManageHook =
     myIgnoreClass = ["trayer"]
     myHideIgnoreClass = ["Blueman-applet"]
     myCenterFloatClass =
-      ["Blueman-manager", "zoom", "Pavucontrol", "SimpleScreenRecorder"]
+      ["Blueman-manager", "zoom", "Pavucontrol", "SimpleScreenRecorder", "wezterm_filechooser"]
     myCenterFloatTitle = ["tmux-Scratchpad", "flameshot"]
     myCenterFloatTitleReg = []
     myFullFloatClass = ["MPlayer", "mpv", "steam_app_.*"]
