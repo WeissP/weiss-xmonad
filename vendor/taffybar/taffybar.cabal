@@ -67,7 +67,7 @@ library
                , gi-cairo-render
                , gi-gdk >=3.0.6 && <3.1
                , gi-gdkpixbuf >=2.0.6 && <2.1
-               , gi-gdkx11
+               , gi-gdkx11 <= 3.0.17
                , gi-glib
                , gi-gtk >= 3.0.26 && < 4
                , gi-gtk-hs >= 0.3.9 && < 0.4
