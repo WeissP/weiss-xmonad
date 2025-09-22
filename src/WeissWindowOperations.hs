@@ -120,9 +120,10 @@ mySwitchableWindows = do
 weissSwitchRecent :: X ()
 weissSwitchRecent = nextMatch History mySwitchableWindows
 
-newtype NextSwitchWindow = NextSwitchWindow (Maybe Window)
+newtype NextSwitchWindow = NextSwitchWindow (Maybe Window) deriving newtype (Show, Read)
 instance ExtensionClass NextSwitchWindow where
   initialValue = NextSwitchWindow Nothing
+  extensionType = PersistentExtension
 
 updateNextSwitchWindow :: Window -> X ()
 updateNextSwitchWindow w = do

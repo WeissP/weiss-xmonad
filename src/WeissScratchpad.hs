@@ -86,9 +86,10 @@ niceFloating = do
     (True, True, _, _) -> r (1 / 50) (26 / 50) (46 / 50) (20 / 50)
     (True, False, _, _) -> r (1 / 50) (3 / 50) (46 / 50) (20 / 50)
 
-newtype CurrentScratchpadName = CurrentScratchpadName String
+newtype CurrentScratchpadName = CurrentScratchpadName String deriving newtype (Show, Read)
 instance ExtensionClass CurrentScratchpadName where
   initialValue = CurrentScratchpadName (head myScratchpadNames)
+  extensionType = PersistentExtension
 
 findNSP :: Window -> X (Maybe NamedScratchpad)
 findNSP w = findM (\(NS {..}) -> runQuery query w) myScratchPads

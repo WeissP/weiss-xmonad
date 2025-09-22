@@ -43,7 +43,7 @@ type Key = String
 type FamilyName = String
 type FamilyNum = Int
 
-newtype NumberedFamily = NumberedFamily Int deriving newtype (Show, Eq)
+newtype NumberedFamily = NumberedFamily Int deriving newtype (Show, Eq, Read)
 allNumberedFamilies = NumberedFamily <$> [1 .. 9]
 instance Family NumberedFamily where
   fName = show
@@ -112,7 +112,7 @@ currentFamily = fromMaybeM (pure $ head allFamilies) $ runMaybeT $ do
   ws <- MaybeT logCurrent
   MaybeT $ pure $ find (`hasWorkspace` ws) allFamilies
 
-newtype FamilyMember = FamilyMember Int deriving newtype (Show)
+newtype FamilyMember = FamilyMember Int deriving newtype (Show, Read)
 allFamilyMembers = FamilyMember <$> [1 .. 9]
 instance Node FamilyMember where
   workspaceID m = currentFamily <&> (`idWithMember` m)
@@ -145,13 +145,15 @@ instance Semigroup WsEffect where
 
 type FamilyOrder = Int -- zero based
 newtype OrderedNumFamilies = OrderedNumFamilies [NumberedFamily]
-  deriving newtype (Show)
+  deriving newtype (Show, Read)
 instance ExtensionClass OrderedNumFamilies where
   initialValue = OrderedNumFamilies allNumberedFamilies
+  extensionType = PersistentExtension
 
-newtype FamilyStore = FamilyStore (HashMap FamilyName FamilyMember)
+newtype FamilyStore = FamilyStore (HashMap FamilyName FamilyMember) deriving newtype (Show, Read)
 instance ExtensionClass FamilyStore where
   initialValue = FamilyStore $ M.fromList ((,FamilyMember 1) <$> allFamiliyNames)
+  extensionType = PersistentExtension
 
 workspaceKeys' :: [([String], X ())]
 workspaceKeys' =
