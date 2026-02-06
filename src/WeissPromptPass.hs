@@ -72,7 +72,7 @@ mkPassPrompt promptLabel passwordFunction xpconfig = do
   mkXPrompt (Pass promptLabel) xpconfig (getPassCompl passwords $ searchPredicate xpconfig) passwordFunction
 
 sendToClj :: String -> X ()
-sendToClj s = spawn $ "bb /home/weiss/scripts/passInput.clj " ++ s
+sendToClj s = spawn $ "nu /home/weiss/scripts/passInput.nu " ++ s
 
 -- | A prompt to retrieve a password from a given entry.
 passPrompt :: XPConfig -> X ()
