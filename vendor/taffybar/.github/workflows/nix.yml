@@ -4,49 +4,35 @@ on:
   push:
     branches: [master]
 
+permissions:
+  id-token: "write"
+  contents: "read"
+
 jobs:
   lints:
-    name: Build and Check with GHC 9.6 on ${{ matrix.nixpkgs }}
+    name: Build and Check with default GHC on ${{ matrix.nixpkgs }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        nixpkgs: [nixos-unstable, nixos-24.05]
+        # Temporarily restrict CI to nixos-unstable while nixos-25.05 is broken.
+        nixpkgs: [nixos-unstable]
+    env:
+      drv: .#packages.x86_64-linux.default
     steps:
-      - uses: actions/checkout@v3
-      - name: Check Nix flake inputs
-        uses: DeterminateSystems/flake-checker-action@main
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-      - name: Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: actions/checkout@main
+      - uses: DeterminateSystems/flake-checker-action@main
+      - uses: DeterminateSystems/nix-installer-action@main
       - name: Use ${{ matrix.nixpkgs }}
         if: matrix.nixpkgs != 'nixos-unstable'
-        run: nix flake lock --override-input nixpkgs github:NixOS/nixpkgs/${{ matrix.nixpkgs }}
-      - name: Run `nix build`
-        run: nix build .
-      - name: Run `nix flake check`
-        run: nix flake check
-      - name: Run `nix-build` using overlay on ${{ matrix.nixpkgs }}
-        if: matrix.nixpkgs != 'nixos-unstable'
-        run: nix-build -I nixpkgs=flake:github:NixOS/nixpkgs/${{ matrix.nixpkgs }} '<nixpkgs>' --arg overlays '[(import ./nix/overlay.nix)]' -A pkgs.haskellPackages.taffybar
-
-  build:
-    name: Build with ${{ matrix.compiler }}
-    runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.experimental }}
-    strategy:
-      fail-fast: false
-      matrix:
-        compiler: [ghc92, ghc94, ghc98]
-        experimental: [false]
-        # include:
-        #   - compiler: ghc910
-        #     experimental: true
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-      - name: Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
-      - name: Nix build for ${{ matrix.compiler }}
-        run: nix build .#${{ matrix.compiler }}-taffybar
+        run: nix flake update nixpkgs --override-input nixpkgs github:NixOS/nixpkgs/${{ matrix.nixpkgs }}
+      - name: Run hlint early (short-circuit on lint failures)
+        run: nix build --print-build-logs --option substituters "https://cache.nixos.org/" .#checks.x86_64-linux.hlint
+      - name: Nix build dependencies
+        run: nix develop --print-build-logs "$drv" --command ghc-pkg list
+      - name: Check Cabal installation without WirePlumber
+        run: |
+          nix develop --command cabal update
+          nix develop --command bash .github/scripts/check-cabal-no-wireplumber.sh
+      - name: Nix build
+        run: nix build --print-build-logs "$drv"
+      - run: nix flake check --print-build-logs

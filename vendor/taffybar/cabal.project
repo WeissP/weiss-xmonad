@@ -1,5 +1,13 @@
 packages:
   ./
   ./example
+  ./packages/xdg-desktop-entry
+  ./packages/gtk-scaling-image
+  ./packages/gtk-sni-tray
+  ./packages/gtk-strut
+  ./packages/status-notifier-item
+  ./packages/dbus-menu
+  ./packages/dbus-hslogger
+
 program-options
   ghc-options: -fwrite-ide-info

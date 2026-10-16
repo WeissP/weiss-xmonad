@@ -6,14 +6,12 @@ module WeissXMonad (runXmonad, module XMonad) where
 import Config
 import Data.List
 import Data.Maybe
-import System.IO (hPutStrLn)
 import Text.Regex
 import TreeActions
 import Utils
 import WeissPromptPass
 import WeissScratchpad
 import WeissWindowOperations
-import WeissXmobar
 import WorkspaceFamily
 import XMonad
 import XMonad.Actions.CycleWS
@@ -22,13 +20,12 @@ import XMonad.Actions.GroupNavigation (historyHook)
 import XMonad.Actions.MouseResize
 import XMonad.Actions.ShowText (flashText, handleTimerEvent)
 import XMonad.Actions.UpdatePointer (updatePointer)
-import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.DynamicProperty
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.RefocusLast (refocusLastLogHook)
-import XMonad.Hooks.StatusBar
+import XMonad.Hooks.TaffybarPagerHints (pagerHints)
 import XMonad.Layout.Accordion
 import XMonad.Layout.LayoutModifier
 import XMonad.Layout.MouseResizableTile (DraggerType (..), MouseResizableTile (..), mouseResizableTile)
@@ -50,23 +47,10 @@ import XMonad.Prompt (
   height,
   position,
  )
-import XMonad.StackSet qualified as W
 import XMonad.Util.EZConfig
 import XMonad.Util.EZConfig (parseKey, parseKeyCombo)
-import XMonad.Util.Loggers
 import XMonad.Util.Parser (runParser)
 import XMonad.Util.Paste
-import XMonad.Util.Run (
-  runInTerm,
-  runProcessWithInput,
-  safeSpawn,
-  spawnPipe,
- )
-
-mylogLayout :: Logger
-mylogLayout = withWindowSet $ return . Just . ld
-  where
-    ld = description . W.layout . W.workspace . W.current
 
 -- Gaps around and between windows
 -- Changes only seem to apply if I log out then in again
@@ -134,6 +118,7 @@ myKeys =
   , ("M-<Left>", sendMessage Shrink)
   , ("M-<Right>", sendMessage Expand)
   , ("M-k", spawn myTerminal)
+  , ("M-b", sendMessage ToggleStruts)
   ,
     ( "M-p"
     , spawn "rofi -m -4 -no-lazy-grab -run-command \"zsh -i -c '{cmd}'\" -show run"
@@ -151,22 +136,22 @@ myKeys =
     --    ]
     <> [ ("<XF86Launch7> " <> key, fun)
        | (key, fun) <-
-          [ ("t", sendMessage NextLayout)
-          , ("s", spawn "flameshot gui")
-          , -- ("f", spawn "fcitx-remote -s fcitx-keyboard-de-nodeadkeys"),
-            ("w", spawn "$SCRIPTS_DIR/notify_window_title.sh")
-          , ("p", mkPassPrompt "select pass" sendToClj myXPConfig)
-          , ("M-2", nextScreen)
-          -- , ("e", exp1 >>= \x -> flashText def 3 x)
-          -- , ("r", spawn "xmonad --restart")
-          -- , ("v", spawn "sh $HOME/.screenlayout/vertical.sh")
-          -- , ("b", spawn "sh $HOME/.screenlayout/horizontal.sh")
-          -- , ("h"      , spawn "rofi-pass")
-          -- ("<Left>", sendMessage $ Move L),
-          -- ("<Right>", sendMessage $ Move R),
-          -- ("<Up>", sendMessage $ Move U),
-          -- ("<Down>", sendMessage $ Move D)
-          ]
+           [ ("t", sendMessage NextLayout)
+           , ("s", spawn "flameshot gui")
+           , -- ("f", spawn "fcitx-remote -s fcitx-keyboard-de-nodeadkeys"),
+             ("w", spawn "$SCRIPTS_DIR/notify_window_title.sh")
+           , ("p", mkPassPrompt "select pass" sendToClj myXPConfig)
+           , ("M-2", nextScreen)
+           -- , ("e", exp1 >>= \x -> flashText def 3 x)
+           -- , ("r", spawn "xmonad --restart")
+           -- , ("v", spawn "sh $HOME/.screenlayout/vertical.sh")
+           -- , ("b", spawn "sh $HOME/.screenlayout/horizontal.sh")
+           -- , ("h"      , spawn "rofi-pass")
+           -- ("<Left>", sendMessage $ Move L),
+           -- ("<Right>", sendMessage $ Move R),
+           -- ("<Up>", sendMessage $ Move U),
+           -- ("<Down>", sendMessage $ Move D)
+           ]
        ]
 
 myManageHook :: ManageHook
@@ -219,10 +204,10 @@ myConfig =
     -- `removeKeysP` ["M-4"]
     `additionalKeysP` myKeys
 
-runXmonad :: String -> IO ()
-runXmonad xmobarDir = do
+runXmonad :: IO ()
+runXmonad =
   xmonad $
     ewmhFullscreen $
       ewmh $
-        withEasySB (xmobarVertical xmobarDir <> xmobarHori xmobarDir) defToggleStrutsKey $
+        pagerHints $
           docks myConfig

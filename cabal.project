@@ -5,3 +5,6 @@ packages:
 
 package weiss-xmonad
   tests: True
+
+package taffybar
+  flags: -wireplumber

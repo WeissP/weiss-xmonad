@@ -1,8 +1,16 @@
-{-# LANGUAGE MultiParamTypeClasses, StandaloneDeriving, FlexibleInstances,
-  InterruptibleFFI, ExistentialQuantification, DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InterruptibleFFI #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -----------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------
+
 -- |
 -- Module      : System.Taffybar.Information.SafeX11
 -- Copyright   : (c) Ivan A. Malison
@@ -11,35 +19,39 @@
 -- Maintainer  : Ivan A. Malison
 -- Stability   : unstable
 -- Portability : unportable
------------------------------------------------------------------------------
 module System.Taffybar.Information.SafeX11
-  ( module Graphics.X11.Xlib
-  , module Graphics.X11.Xlib.Extras
-  , getWMHints
-  , getWindowProperty8
-  , getWindowProperty16
-  , getWindowProperty32
-  , postX11RequestSyncDef
-  , rawGetWindowPropertyBytes
-  , safeGetGeometry
+  ( module Graphics.X11.Xlib,
+    module Graphics.X11.Xlib.Extras,
+    getWMHints,
+    getWindowProperty8,
+    getWindowProperty16,
+    getWindowProperty32,
+    postX11RequestSyncDef,
+    rawGetWindowPropertyBytes,
+    safeGetGeometry,
   )
-  where
+where
 
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe (MaybeT(..))
+import Control.Monad.Trans.Maybe (MaybeT (..))
 import Data.Either.Combinators
 import Data.Typeable
 import Foreign hiding (void)
 import Foreign.C.Types
 import GHC.ForeignPtr
 import Graphics.X11.Xlib
-import Graphics.X11.Xlib.Extras
-       hiding (rawGetWindowProperty, getWindowProperty8,
-               getWindowProperty16, getWindowProperty32,
-               xGetWMHints, getWMHints, refreshKeyboardMapping)
+import Graphics.X11.Xlib.Extras hiding
+  ( getWMHints,
+    getWindowProperty16,
+    getWindowProperty32,
+    getWindowProperty8,
+    rawGetWindowProperty,
+    refreshKeyboardMapping,
+    xGetWMHints,
+  )
 import System.IO.Unsafe
 import System.Log.Logger
 import System.Timeout
@@ -49,33 +61,34 @@ logHere :: Priority -> String -> IO ()
 logHere = logM "System.Taffybar.Information.SafeX11"
 
 foreign import ccall safe "XlibExtras.h XGetWMHints"
-    safeXGetWMHints :: Display -> Window -> IO (Ptr WMHints)
+  safeXGetWMHints :: Display -> Window -> IO (Ptr WMHints)
 
 foreign import ccall interruptible "XlibExtras.h XGetWindowProperty"
-               safeXGetWindowProperty ::
-               Display ->
-                 Window ->
-                   Atom ->
-                     CLong ->
-                       CLong ->
-                         Bool ->
-                           Atom ->
-                             Ptr Atom ->
-                               Ptr CInt ->
-                                 Ptr CULong ->
-                                   Ptr CULong ->
-                                     Ptr (Ptr CUChar) -> IO Status
+  safeXGetWindowProperty ::
+    Display ->
+    Window ->
+    Atom ->
+    CLong ->
+    CLong ->
+    Bool ->
+    Atom ->
+    Ptr Atom ->
+    Ptr CInt ->
+    Ptr CULong ->
+    Ptr CULong ->
+    Ptr (Ptr CUChar) ->
+    IO Status
 
-rawGetWindowPropertyBytes
-  :: Storable a
-  => Int -> Display -> Atom -> Window -> IO (Maybe (ForeignPtr a, Int))
+rawGetWindowPropertyBytes ::
+  (Storable a) =>
+  Int -> Display -> Atom -> Window -> IO (Maybe (ForeignPtr a, Int))
 rawGetWindowPropertyBytes bits d atom w =
-  alloca $ \actual_type_return ->
+  postX11RequestSyncDef Nothing $ alloca $ \actual_type_return ->
     alloca $ \actual_format_return ->
       alloca $ \nitems_return ->
         alloca $ \bytes_after_return ->
           alloca $ \prop_return -> do
-            ret <- postX11RequestSync $
+            ret <-
               safeXGetWindowProperty
                 d
                 w
@@ -89,7 +102,7 @@ rawGetWindowPropertyBytes bits d atom w =
                 nitems_return
                 bytes_after_return
                 prop_return
-            if fromRight (-1) ret /= 0
+            if ret /= 0
               then return Nothing
               else do
                 prop_ptr <- peek prop_return
@@ -101,16 +114,16 @@ rawGetWindowPropertyBytes bits d atom w =
       | actual_format == 0 = return Nothing -- Property not found
       | actual_format /= bits = xFree prop_ptr >> return Nothing
       | otherwise = do
-        ptr <- newConcForeignPtr (castPtr prop_ptr) (void $ xFree prop_ptr)
-        return $ Just (ptr, nitems)
+          ptr <- newConcForeignPtr (castPtr prop_ptr) (void $ xFree prop_ptr)
+          return $ Just (ptr, nitems)
 
 data SafeX11Exception = SafeX11Exception deriving (Show, Eq, Typeable)
 
 instance Exception SafeX11Exception
 
 data IORequest = forall a. IORequest
-  { ioAction :: IO a
-  , ioResponse :: Chan (Either SafeX11Exception a)
+  { ioAction :: IO a,
+    ioResponse :: Chan (Either SafeX11Exception a)
   }
 
 {-# NOINLINE requestQueue #-}
@@ -123,36 +136,37 @@ x11Thread = unsafePerformIO $ forkIO startHandlingX11Requests
 
 withErrorHandler :: XErrorHandler -> IO a -> IO a
 withErrorHandler new_handler action = do
-    handler <- mkXErrorHandler (\d e -> new_handler d e >> return 0)
-    original <- _xSetErrorHandler handler
-    res <- action
-    _ <- _xSetErrorHandler original
-    return res
+  bracket
+    (mkXErrorHandler (\d e -> new_handler d e >> return 0))
+    freeHaskellFunPtr
+    (\handler -> bracket (_xSetErrorHandler handler) _xSetErrorHandler (const action))
 
 deriving instance Show ErrorEvent
 
 startHandlingX11Requests :: IO ()
 startHandlingX11Requests =
   withErrorHandler handleError handleX11Requests
-  where handleError _ xerrptr = do
-          ee <- getErrorEvent xerrptr
-          logHere WARNING $
-                  printf "Handling X11 error with error handler: %s" $ show ee
+  where
+    handleError _ xerrptr = do
+      ee <- getErrorEvent xerrptr
+      logHere WARNING $
+        printf "Handling X11 error with error handler: %s" $
+          show ee
 
 handleX11Requests :: IO ()
-handleX11Requests = do
+handleX11Requests = forever $ mask $ \restore -> do
   IORequest {ioAction = action, ioResponse = responseChannel} <-
     readChan requestQueue
-  res <-
-    catch
-      (maybe (Left SafeX11Exception) Right <$> timeout 500000 action)
-      (\e -> do
-         logHere WARNING $ printf "Handling X11 error with catch: %s" $
-                 show (e :: IOException)
-         return $ Left SafeX11Exception)
-  writeChan responseChannel res
-  handleX11Requests
-  return ()
+  outcome <- try $ restore $ timeout 500000 (action >>= evaluate)
+  let response = case outcome of
+        Right value -> maybe (Left SafeX11Exception) Right value
+        Left (_ :: SomeException) -> Left SafeX11Exception
+  writeChan responseChannel response
+  case outcome of
+    Left err -> case fromException err :: Maybe SomeAsyncException of
+      Just _ -> throwIO err
+      Nothing -> logHere WARNING $ printf "X11 request failed: %s" (show err)
+    Right _ -> pure ()
 
 postX11RequestSync :: IO a -> IO (Either SafeX11Exception a)
 postX11RequestSync action = do
@@ -172,8 +186,8 @@ postX11RequestSyncDef def action =
   fromRight def <$> postX11RequestSync action
 
 rawGetWindowProperty ::
-  Storable a
-  => Int -> Display -> Atom -> Window -> IO (Maybe [a])
+  (Storable a) =>
+  Int -> Display -> Atom -> Window -> IO (Maybe [a])
 rawGetWindowProperty bits d atom w =
   runMaybeT $ do
     (ptr, count) <- MaybeT $ rawGetWindowPropertyBytes bits d atom w
@@ -190,39 +204,51 @@ getWindowProperty32 = rawGetWindowProperty 32
 
 getWMHints :: Display -> Window -> IO WMHints
 getWMHints dpy w = do
-    p <- safeXGetWMHints dpy w
-    if p == nullPtr
-        then return $ WMHints 0 False 0 0 0 0 0 0 0
-        else do x <- peek p; _ <- xFree p; return x
+  p <- safeXGetWMHints dpy w
+  if p == nullPtr
+    then return $ WMHints 0 False 0 0 0 0 0 0 0
+    else do x <- peek p; _ <- xFree p; return x
 
-safeGetGeometry :: Display -> Drawable ->
-        IO (Window, Position, Position, Dimension, Dimension, Dimension, CInt)
+safeGetGeometry ::
+  Display ->
+  Drawable ->
+  IO (Window, Position, Position, Dimension, Dimension, Dimension, CInt)
 safeGetGeometry display d =
-        outParameters7 (throwIfZero "getGeometry") $
-                xGetGeometry display d
+  outParameters7 (throwIfZero "getGeometry") $
+    xGetGeometry display d
 
-outParameters7 :: (Storable a, Storable b, Storable c, Storable d, Storable e, Storable f, Storable g) =>
-        (IO r -> IO ()) -> (Ptr a -> Ptr b -> Ptr c -> Ptr d -> Ptr e -> Ptr f -> Ptr g -> IO r) ->
-        IO (a,b,c,d,e,f,g)
+outParameters7 ::
+  (Storable a, Storable b, Storable c, Storable d, Storable e, Storable f, Storable g) =>
+  (IO r -> IO ()) ->
+  (Ptr a -> Ptr b -> Ptr c -> Ptr d -> Ptr e -> Ptr f -> Ptr g -> IO r) ->
+  IO (a, b, c, d, e, f, g)
 outParameters7 check fn =
-        alloca $ \ a_return ->
-        alloca $ \ b_return ->
-        alloca $ \ c_return ->
-        alloca $ \ d_return ->
-        alloca $ \ e_return ->
-        alloca $ \ f_return ->
-        alloca $ \ g_return -> do
-        check (fn a_return b_return c_return d_return e_return f_return g_return)
-        a <- peek a_return
-        b <- peek b_return
-        c <- peek c_return
-        d <- peek d_return
-        e <- peek e_return
-        f <- peek f_return
-        g <- peek g_return
-        return (a,b,c,d,e,f,g)
+  alloca $ \a_return ->
+    alloca $ \b_return ->
+      alloca $ \c_return ->
+        alloca $ \d_return ->
+          alloca $ \e_return ->
+            alloca $ \f_return ->
+              alloca $ \g_return -> do
+                check (fn a_return b_return c_return d_return e_return f_return g_return)
+                a <- peek a_return
+                b <- peek b_return
+                c <- peek c_return
+                d <- peek d_return
+                e <- peek e_return
+                f <- peek f_return
+                g <- peek g_return
+                return (a, b, c, d, e, f, g)
 
 foreign import ccall safe "HsXlib.h XGetGeometry"
-        xGetGeometry :: Display -> Drawable ->
-                Ptr Window -> Ptr Position -> Ptr Position -> Ptr Dimension ->
-                Ptr Dimension -> Ptr Dimension -> Ptr CInt -> IO Status
+  xGetGeometry ::
+    Display ->
+    Drawable ->
+    Ptr Window ->
+    Ptr Position ->
+    Ptr Position ->
+    Ptr Dimension ->
+    Ptr Dimension ->
+    Ptr Dimension ->
+    Ptr CInt ->
+    IO Status

@@ -28,6 +28,22 @@ Be aware that the `TaffybarConfig` value required by `dyreTaffybar`/`startTaffyb
 Appearance of Taffybar widgets can be controlled with CSS rules. These
 are by default loaded from `$XDG_CONFIG_HOME/taffybar/taffybar.css`.
 
+### Workspace labels and icons
+
+`workspacesNew defaultWorkspacesConfig` places the workspace label before its
+window icons. To overlay the label in the bottom-left corner of the icons,
+select the overlay builder:
+
+```haskell
+workspacesNew defaultWorkspacesConfig
+  { widgetBuilder = labelOverlayWidgetBuilder }
+```
+
+Both builders are exported by `System.Taffybar.Widget.Workspaces`. CSS controls
+spacing and appearance through `.workspace-label`, `.window-icon-container`,
+and `.contents`. The overlay builder also exposes `.overlay-box` for styling
+the label's container.
+
 ### GTK Documentation
 
 CSS styling is a feature of GTK. It uses a limited version of CSS, so
@@ -73,3 +89,21 @@ This can be used for example to apply different styling to widgets of
 the same type.
 
 [widgetSetClassGI]: https://hackage.haskell.org/package/taffybar/docs/System-Taffybar-Widget-Util.html#v:widgetSetClassGI
+
+### Built-in widget classes
+
+Most built-in widgets now expose a stable root CSS class by default, so
+you can style them without wrapping constructors in your config.
+
+Examples:
+- `.backlight`, `.backlight-icon`, `.backlight-label`
+- `.pulse-audio`, `.pulse-audio-icon`, `.pulse-audio-label`
+- `.wire-plumber`, `.wire-plumber-icon`, `.wire-plumber-label`
+- `.disk-usage`, `.disk-usage-icon`, `.disk-usage-label`
+- `.network-manager-wifi*` and `.network-manager-network*`
+- `.text-clock`, `.weather`, `.cpu-monitor`, `.network-graph`
+
+Taffybar also applies shared classes for common internals:
+- `.icon-label`, `.icon`, `.label`
+- `.polling-label`, `.polling-label-container`, `.polling-label-text`
+- `.graph`, `.graph-canvas`, `.graph-label`

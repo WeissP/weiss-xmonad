@@ -1,0 +1,248 @@
+module Widgets (
+  workspaces,
+  workspacesCompact,
+  cpu,
+  cpuCompact,
+  memory,
+  memoryCompact,
+  disk,
+  diskCompact,
+  clock,
+  clockCompact,
+  media,
+  mediaCompact,
+  network,
+  tray,
+) where
+
+import Control.Monad (forM_, unless)
+import Data.Default (def)
+import Data.Text (Text)
+import Data.Text qualified as Text
+import GI.Gtk qualified as Gtk
+import StatusNotifier.Tray qualified as Tray
+import System.Taffybar.Context (TaffyIO)
+import System.Taffybar.Hooks (NetworkInfoChan (..), getNetworkChan)
+import System.Taffybar.Information.MPRIS2 (NowPlaying (..))
+import System.Taffybar.Information.Memory
+import System.Taffybar.Information.Network (sumSpeeds)
+import System.Taffybar.Information.Workspaces.Model
+import System.Taffybar.Util (postGUIASync)
+import System.Taffybar.Widget
+import System.Taffybar.Widget.Generic.ChannelWidget (channelWidgetNew)
+import System.Taffybar.Widget.Generic.Graph
+import System.Taffybar.Widget.Temperature
+import System.Taffybar.Widget.Workspaces qualified as Workspaces
+import System.Taffybar.WidgetPriority (withPriority)
+import Text.Printf (printf)
+import WorkspaceGroups (workspaceGroupsNew)
+
+-- Each action constructs a fresh widget for its bar. Shared widgets need no variant.
+workspaces, workspacesCompact :: TaffyIO Gtk.Widget
+workspaces = workspacesFor False
+workspacesCompact = workspacesFor True
+
+cpu, cpuCompact :: TaffyIO Gtk.Widget
+cpu = cpuFor False
+cpuCompact = cpuFor True
+
+memory, memoryCompact :: TaffyIO Gtk.Widget
+memory = memoryFor False
+memoryCompact = memoryFor True
+
+disk, diskCompact :: TaffyIO Gtk.Widget
+disk = diskFor False
+diskCompact = diskFor True
+
+clock, clockCompact :: TaffyIO Gtk.Widget
+clock = clockFor False
+clockCompact = clockFor True
+
+media, mediaCompact :: TaffyIO Gtk.Widget
+media = mediaFor False
+mediaCompact = mediaFor True
+
+tray :: TaffyIO Gtk.Widget
+tray =
+  card "tray-card" $
+    sniTrayNewFromParams
+      Tray.defaultTrayParams
+        { Tray.trayImageSize = Tray.TrayImageSize 24
+        , Tray.trayCenterIcons = True
+        }
+
+graphConfig :: GraphConfig
+graphConfig =
+  def
+    { graphPadding = 0
+    , graphBorderWidth = 0
+    , graphWidth = 76
+    , graphHistorySize = 60
+    , graphBackgroundColor = (0, 0, 0, 0)
+    }
+
+cpuConfig, memoryConfig :: GraphConfig
+cpuConfig =
+  graphConfig
+    { graphDataColors = [(0.65, 0.85, 0.63, 0.6), (0.58, 0.89, 0.84, 0.9)]
+    , graphLabel = Just "CPU"
+    }
+memoryConfig =
+  graphConfig
+    { graphDataColors = [(0.54, 0.71, 0.98, 0.65)]
+    , graphWidth = 48
+    }
+
+memoryText :: MemoryInfo -> Text
+memoryText info =
+  Text.pack $
+    printf
+      "RAM %.0f/%.0f GiB • SWAP %.0f/%.0f GiB"
+      (memoryUsed info / 1024)
+      (memoryTotal info / 1024)
+      (memorySwapUsed info / 1024)
+      (memorySwapTotal info / 1024)
+
+memoryTooltip :: MemoryInfo -> Text
+memoryTooltip info =
+  Text.pack $
+    printf
+      "RAM used: %.0f KiB\nRAM total: %.0f KiB\nRAM available: %.0f KiB\nSwap used: %.0f KiB\nSwap total: %.0f KiB\nValues on the bar are used / total."
+      (memoryUsed info * 1024)
+      (memoryTotal info * 1024)
+      (memoryAvailable info * 1024)
+      (memorySwapUsed info * 1024)
+      (memorySwapTotal info * 1024)
+
+memoryWidget :: Bool -> TaffyIO Gtk.Widget
+memoryWidget compact = do
+  channel <- getMemoryInfoChan 2
+  initial <- getMemoryInfoState 2
+  row <- Gtk.boxNew Gtk.OrientationHorizontal 6
+  history <- if compact then pure Nothing else Just <$> graphNew memoryConfig
+  forM_ history $ \(graph, _) -> Gtk.boxPackStart row graph False False 0
+  label <- Gtk.labelNew Nothing
+  _ <- widgetSetClassGI label "memory-values"
+  Gtk.boxPackStart row label False False 0
+  -- The text, tooltip, and graph all use the same memory snapshot.
+  let update info = postGUIASync $ do
+        Gtk.labelSetText label $ memoryText info
+        Gtk.widgetSetTooltipText row $ Just $ memoryTooltip info
+        forM_ history $ \(_, handle) -> graphAddSample handle [memoryUsedRatio info]
+  _ <- Gtk.onWidgetRealize row $ update initial
+  Gtk.toWidget =<< channelWidgetNew row channel update
+
+-- Style the outer wrapper so padding and priority apply to the whole card.
+card :: Text -> TaffyIO Gtk.Widget -> TaffyIO Gtk.Widget
+card name widget = widget >>= buildContentsBox >>= (`widgetSetClassGI` name)
+
+-- playerctld proxies a real player; rendering both duplicates the same media.
+mediaPlayer :: Bool -> UpdateMPRIS2PlayerWidget MPRIS2PlayerControlsWidget
+mediaPlayer compact add existing nowPlaying = do
+  player <-
+    simplePlayerWidgetWithControls
+      def
+        { setNowPlayingLabel = if compact then playingText 8 14 else playingText 12 24
+        , showPlayerWidgetFn = \info ->
+            pure $
+              npStatus info /= "Stopped"
+                && npBusName info /= "org.mpris.MediaPlayer2.playerctld"
+        }
+      add
+      existing
+      nowPlaying
+  Gtk.widgetSetTooltipText (controlsPreviousButton player) $ Just "Previous track"
+  Gtk.widgetSetTooltipText (controlsPlayPauseButton player) $ Just "Play / pause"
+  Gtk.widgetSetTooltipText (controlsNextButton player) $ Just "Next track"
+  pure player
+
+showWorkspace :: Bool -> WorkspaceInfo -> Bool
+showWorkspace compact workspace =
+  not (workspaceIsSpecial workspace)
+    && not ("NSP" `Text.isPrefixOf` workspaceName (workspaceIdentity workspace))
+    && Workspaces.hideEmpty workspace
+    && ( not compact
+           || workspaceState workspace `elem` [WorkspaceActive, WorkspaceVisible]
+           || workspaceHasUrgentWindow workspace
+       )
+
+workspacesFor :: Bool -> TaffyIO Gtk.Widget
+workspacesFor compact = workspaceGroupsNew $ showWorkspace compact
+
+cpuFor :: Bool -> TaffyIO Gtk.Widget
+cpuFor compact = card "cpu-card" $ do
+  row <- Gtk.boxNew Gtk.OrientationHorizontal 8
+  usage <- cpuMonitorNew cpuConfig {graphWidth = if compact then 56 else 76} 0.5 "cpu"
+  Gtk.boxPackStart row usage False False 0
+  unless compact $ do
+    temperature <- temperatureLabelNewChanWith def {tempPollInterval = 5}
+    Gtk.boxPackStart row temperature False False 0
+  Gtk.toWidget row
+
+memoryFor :: Bool -> TaffyIO Gtk.Widget
+memoryFor compact = card "memory-card" $ memoryWidget compact
+
+diskFor :: Bool -> TaffyIO Gtk.Widget
+diskFor compact =
+  card "disk-card" $
+    diskUsageNewWith
+      def
+        { diskUsagePath = "/"
+        , diskUsageIcon = "DISK"
+        , diskUsageFormat = if compact then "$usedPercent$%" else "$usedPercent$% • $availableWhole$ free"
+        , diskUsageTooltipFormat =
+            Just "$path$: $used$ / $total$ used\n$available$ available\nClick to refresh"
+        }
+
+network :: TaffyIO Gtk.Widget
+network = withPriority 5 $ do
+  NetworkInfoChan channel <- getNetworkChan
+  row <- Gtk.boxNew Gtk.OrientationHorizontal 4
+  let block name arrow tooltip = do
+        contents <- Gtk.boxNew Gtk.OrientationHorizontal 4
+        icon <- Gtk.imageNewFromIconName (Just arrow) $ fromIntegral $ fromEnum Gtk.IconSizeMenu
+        Gtk.imageSetPixelSize icon 18
+        Gtk.widgetSetValign icon Gtk.AlignCenter
+        _ <- widgetSetClassGI icon "network-arrow"
+        value <- Gtk.labelNew $ Just "0B/s"
+        -- Reserve ten monospace characters even when the displayed unit changes.
+        Gtk.labelSetWidthChars value 10
+        Gtk.labelSetMaxWidthChars value 10
+        Gtk.labelSetXalign value 1
+        _ <- widgetSetClassGI value "network-rate"
+        Gtk.boxPackStart contents icon False False 0
+        Gtk.boxPackStart contents value False False 0
+        wrapper <- card name $ Gtk.toWidget contents
+        Gtk.widgetSetTooltipText wrapper $ Just tooltip
+        Gtk.boxPackStart row wrapper False False 0
+        pure value
+  downstream <- block "network-down" "go-down-symbolic" "Download speed"
+  upstream <- block "network-up" "go-up-symbolic" "Upload speed"
+  _ <- widgetSetClassGI row "network-card"
+  let update speedInfo = postGUIASync $ do
+        -- Match the vendored network monitor's transmit/receive ordering.
+        let (outgoing, incoming) = sumSpeeds $ fmap snd speedInfo
+        Gtk.labelSetText downstream $ Text.pack $ toAuto 3 $ fromRational incoming
+        Gtk.labelSetText upstream $ Text.pack $ toAuto 3 $ fromRational outgoing
+  Gtk.toWidget =<< channelWidgetNew row channel update
+
+clockFor :: Bool -> TaffyIO Gtk.Widget
+clockFor compact =
+  card "clock-card" $
+    textClockNewWith
+      def
+        { clockFormatString =
+            if compact
+              then "<b>%H:%M</b>"
+              else "<span foreground='#d8dee9' weight='medium'>%a %d %b</span>   <b>%H:%M</b>"
+        , clockUpdateStrategy = RoundedTargetInterval 1 0
+        }
+
+mediaFor :: Bool -> TaffyIO Gtk.Widget
+mediaFor compact =
+  withPriority 2 $
+    mpris2NewWithConfig
+      defaultMPRIS2ControlsConfig
+        { mprisWidgetWrapper = (`widgetSetClassGI` "media-card")
+        , updatePlayerWidget = mediaPlayer compact
+        }

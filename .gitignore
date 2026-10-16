@@ -1,5 +1,19 @@
 ### Nix ###
 result
+.direnv/
+.ctags.d
+
+### Local editor and agent files ###
+.tags
+.dir-locals.el
+.agent-shell/
+
+### Local scratch files ###
+/env_config/common.toml
+/vendor/taffybar/output
+/vendor/xmonad-contrib/it_is_a_project
+/vendor/xmonad-contrib/.envrc
+/vendor/xmonad-contrib/hie.yaml
 
 ### Haskell ###
 dist

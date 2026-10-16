@@ -25,7 +25,6 @@
     flake-utils.lib.eachSystem
       [
         "x86_64-linux"
-        "x86_64-darwin"
       ]
       (
         system:
@@ -52,6 +51,11 @@
               packages = ps: [ ps.weiss-xmonad ];
               exactDeps = false;
               withHoogle = true;
+              nativeBuildInputs = [ pkgs.pkg-config ];
+              buildInputs = [
+                pkgs.systemd.dev # libudev headers and pkg-config metadata
+                pkgs.gtk-layer-shell
+              ];
               inputsFrom = [
                 (pkgs.devshell.fromTOML ./devshell.toml)
                 # (pkgs.devshell.mkShell {
@@ -72,7 +76,7 @@
         // {
           packages = {
             default = flake.packages."weiss-xmonad:exe:weiss-xmonad-exe";
-            weiss-taffybar = flake.packages."weiss-xmonad:exe:weiss-taffybar-exe";
+            weiss-taffybar = flake.packages."weiss-xmonad:exe:taffybar";
           };
           devShells = {
             default = shellWithToml [ ];

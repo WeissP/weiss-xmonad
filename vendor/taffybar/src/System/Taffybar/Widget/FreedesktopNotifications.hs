@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+
 -- | This widget listens on DBus for freedesktop notifications
 -- (<http://developer.gnome.org/notification-spec/>).  Currently it is
 -- somewhat ugly, but the format is somewhat configurable.
@@ -19,204 +19,192 @@
 -- A timeout thread is associated with a notification id.
 -- It sleeps until the specific timeout and then removes every notification
 -- with that id from the queue
-
 module System.Taffybar.Widget.FreedesktopNotifications
-  ( Notification(..)
-  , NotificationConfig(..)
-  , defaultNotificationConfig
-  , notifyAreaNew
-  ) where
+  ( Notification (..),
+    NotificationConfig (..),
+    defaultNotificationConfig,
+    notifyAreaNew,
+  )
+where
 
-import           Control.Concurrent
-import           Control.Concurrent.STM
-import           Control.Monad ( forever, void )
-import           Control.Monad.IO.Class
-import           DBus
-import           DBus.Client
-import           Data.Default ( Default(..) )
-import           Data.Foldable
-import           Data.Int ( Int32 )
-import           Data.Map ( Map )
-import           Data.Sequence ( Seq, (|>), viewl, ViewL(..) )
-import qualified Data.Sequence as S
-import           Data.Text ( Text )
+import Control.Concurrent
+import Control.Concurrent.STM
+import Control.Monad (forever, void)
+import Control.Monad.IO.Class
+import DBus
+import DBus.Client
+import Data.Default (Default (..))
+import Data.Int (Int32)
+import Data.Map (Map)
+import Data.Text (Text)
 import qualified Data.Text as T
-import           Data.Word ( Word32 )
-import           GI.GLib (markupEscapeText)
-import           GI.Gtk
+import Data.Word (Word32)
+import GI.GLib (markupEscapeText)
+import GI.Gtk
 import qualified GI.Pango as Pango
-import           System.Taffybar.Util
-
--- | A simple structure representing a Freedesktop notification
-data Notification = Notification
-  { noteAppName :: Text
-  , noteReplaceId :: Word32
-  , noteSummary :: Text
-  , noteBody :: Text
-  , noteExpireTimeout :: Maybe Int32
-  , noteId :: Word32
-  } deriving (Show, Eq)
+import System.Taffybar.Information.Notifications
+import System.Taffybar.Util
+import System.Taffybar.Widget.Util (widgetSetClassGI)
 
 data NotifyState = NotifyState
-  { noteWidget :: Label
-  , noteContainer :: Widget
-  , noteConfig :: NotificationConfig -- ^ The associated configuration
-  , noteQueue :: TVar (Seq Notification) -- ^ The queue of active notifications
-  , noteIdSource :: TVar Word32 -- ^ A source of fresh notification ids
-  , noteChan :: TChan () -- ^ Writing to this channel wakes up the display thread
+  { noteWidget :: Label,
+    noteContainer :: Widget,
+    -- | The associated configuration
+    noteConfig :: NotificationConfig,
+    -- | The queue of active notifications
+    noteQueue :: NotificationQueue,
+    -- | A source of fresh notification ids
+    noteIdSource :: TVar Word32
   }
 
 initialNoteState :: Widget -> Label -> NotificationConfig -> IO NotifyState
 initialNoteState wrapper l cfg = do
   m <- newTVarIO 1
-  q <- newTVarIO S.empty
-  ch <- newBroadcastTChanIO
-  return NotifyState { noteQueue = q
-                     , noteIdSource = m
-                     , noteWidget = l
-                     , noteContainer = wrapper
-                     , noteConfig = cfg
-                     , noteChan = ch
-                     }
+  q <- newNotificationQueue
+  return
+    NotifyState
+      { noteQueue = q,
+        noteIdSource = m,
+        noteWidget = l,
+        noteContainer = wrapper,
+        noteConfig = cfg
+      }
 
 -- | Removes every notification with id 'nId' from the queue
 notePurge :: NotifyState -> Word32 -> IO ()
-notePurge s nId = atomically . modifyTVar' (noteQueue s) $
-  S.filter ((nId /=) . noteId)
+notePurge s = removeNotification (noteQueue s)
 
 -- | Removes the first (oldest) notification from the queue
 noteNext :: NotifyState -> IO ()
-noteNext s = atomically $ modifyTVar' (noteQueue s) aux
-  where
-    aux queue = case viewl queue of
-      EmptyL -> S.empty
-      _ :< ns -> ns
+noteNext = nextNotification . noteQueue
 
 -- | Generates a fresh notification id
 noteFreshId :: NotifyState -> IO Word32
-noteFreshId NotifyState { noteIdSource } = atomically $ do
+noteFreshId NotifyState {noteIdSource} = atomically $ do
   nId <- readTVar noteIdSource
-  writeTVar noteIdSource (succ nId)
+  writeTVar noteIdSource (nId + 1)
   return nId
 
 --------------------------------------------------------------------------------
+
 -- | Handles a new notification
-notify :: NotifyState
-       -> Text -- ^ Application name
-       -> Word32 -- ^ Replaces id
-       -> Text -- ^ App icon
-       -> Text -- ^ Summary
-       -> Text -- ^ Body
-       -> [Text] -- ^ Actions
-       -> Map Text Variant -- ^ Hints
-       -> Int32 -- ^ Expires timeout (milliseconds)
-       -> IO Word32
+notify ::
+  NotifyState ->
+  -- | Application name
+  Text ->
+  -- | Replaces id
+  Word32 ->
+  -- | App icon
+  Text ->
+  -- | Summary
+  Text ->
+  -- | Body
+  Text ->
+  -- | Actions
+  [Text] ->
+  -- | Hints
+  Map Text Variant ->
+  -- | Expires timeout (milliseconds)
+  Int32 ->
+  IO Word32
 notify s appName replaceId _ summary body _ _ timeout = do
   realId <- if replaceId == 0 then noteFreshId s else return replaceId
   let configTimeout = notificationMaxTimeout (noteConfig s)
-      realTimeout = if timeout <= 0 -- Gracefully handle out of spec negative values
-                    then configTimeout
-                    else case configTimeout of
-                           Nothing -> Just timeout
-                           Just maxTimeout -> Just (min maxTimeout timeout)
+      realTimeout =
+        if timeout <= 0 -- Gracefully handle out of spec negative values
+          then configTimeout
+          else case configTimeout of
+            Nothing -> Just timeout
+            Just maxTimeout -> Just (min maxTimeout timeout)
 
   escapedSummary <- markupEscapeText summary (-1)
   escapedBody <- markupEscapeText body (-1)
-  let n = Notification { noteAppName = appName
-                       , noteReplaceId = replaceId
-                       , noteSummary = escapedSummary
-                       , noteBody = escapedBody
-                       , noteExpireTimeout = realTimeout
-                       , noteId = realId
-                       }
-  -- Either add the new note to the queue or replace an existing note if their ids match
-  atomically $ do
-    queue <- readTVar $ noteQueue s
-    writeTVar (noteQueue s) $ case S.findIndexL (\n_ -> noteId n == noteId n_) queue of
-      Nothing -> queue |> n
-      Just index -> S.update index n queue
-  startTimeoutThread s n
-  wakeupDisplayThread s
+  let n =
+        Notification
+          { noteAppName = appName,
+            noteReplaceId = replaceId,
+            noteSummary = escapedSummary,
+            noteBody = escapedBody,
+            noteExpireTimeout = realTimeout,
+            noteId = realId
+          }
+  enqueueNotification (noteQueue s) n
   return realId
 
 -- | Handles user cancellation of a notification
 closeNotification :: NotifyState -> Word32 -> IO ()
-closeNotification s nId = do
-  notePurge s nId
-  wakeupDisplayThread s
+closeNotification = notePurge
 
-notificationDaemon :: (AutoMethod f1, AutoMethod f2)
-                      => f1 -> f2 -> IO ()
+notificationDaemon ::
+  (AutoMethod f1, AutoMethod f2) =>
+  f1 -> f2 -> IO ()
 notificationDaemon onNote onCloseNote = do
   client <- connectSession
   _ <- requestName client "org.freedesktop.Notifications" [nameAllowReplacement, nameReplaceExisting]
   export client "/org/freedesktop/Notifications" interface
   where
     getServerInformation :: IO (Text, Text, Text, Text)
-    getServerInformation = return ("haskell-notification-daemon",
-                                   "nochair.net",
-                                   "0.0.1",
-                                   "1.1")
+    getServerInformation =
+      return
+        ( "haskell-notification-daemon",
+          "nochair.net",
+          "0.0.1",
+          "1.1"
+        )
     getCapabilities :: IO [Text]
     getCapabilities = return ["body", "body-markup"]
-    interface = defaultInterface
-      { interfaceName = "org.freedesktop.Notifications"
-      , interfaceMethods =
-          [ autoMethod "GetServerInformation" getServerInformation
-          , autoMethod "GetCapabilities" getCapabilities
-          , autoMethod "CloseNotification" onCloseNote
-          , autoMethod "Notify" onNote
-          ]
-      }
+    interface =
+      defaultInterface
+        { interfaceName = "org.freedesktop.Notifications",
+          interfaceMethods =
+            [ autoMethod "GetServerInformation" getServerInformation,
+              autoMethod "GetCapabilities" getCapabilities,
+              autoMethod "CloseNotification" onCloseNote,
+              autoMethod "Notify" onNote
+            ]
+        }
 
 --------------------------------------------------------------------------------
-wakeupDisplayThread :: NotifyState -> IO ()
-wakeupDisplayThread s = void . atomically $ writeTChan (noteChan s) ()
 
 -- | Refreshes the GUI
 displayThread :: NotifyState -> IO ()
 displayThread s = do
-  chan <- atomically . dupTChan $ noteChan s
+  chan <- atomically . dupTChan $ notificationUpdates (noteQueue s)
   forever $ do
     _ <- atomically $ readTChan chan
-    ns <- readTVarIO (noteQueue s)
+    ns <- readNotifications (noteQueue s)
     postGUIASync $
-      if S.length ns == 0
-      then widgetHide (noteContainer s)
-      else do
-        labelSetMarkup (noteWidget s) $ formatMessage (noteConfig s) (toList ns)
-        widgetShowAll (noteContainer s)
-  where
-    formatMessage NotificationConfig {..} ns =
-      T.take notificationMaxLength $ notificationFormatter ns
+      if null ns
+        then widgetHide (noteContainer s)
+        else do
+          labelSetMarkup (noteWidget s) $ notificationFormatter (noteConfig s) ns
+          widgetShowAll (noteContainer s)
 
 --------------------------------------------------------------------------------
-startTimeoutThread :: NotifyState -> Notification -> IO ()
-startTimeoutThread s Notification {..} = case noteExpireTimeout of
-  Nothing -> return ()
-  Just timeout -> void $ forkIO $ do
-    threadDelay (fromIntegral timeout * 10^(3 :: Int))
-    notePurge s noteId
-    wakeupDisplayThread s
 
---------------------------------------------------------------------------------
+-- | Rendering and behavior settings for the notification widget.
 data NotificationConfig = NotificationConfig
-  { notificationMaxTimeout :: Maybe Int32 -- ^ Maximum time that a notification will be displayed (in seconds).  Default: None
-  , notificationMaxLength :: Int -- ^ Maximum length displayed, in characters.  Default: 100
-  , notificationFormatter :: [Notification] -> T.Text -- ^ Function used to format notifications, takes the notifications from first to last
+  { -- | Maximum time that a notification will be displayed (in milliseconds). Default: None
+    notificationMaxTimeout :: Maybe Int32,
+    -- | Maximum length displayed, in characters.  Default: 100
+    notificationMaxLength :: Int,
+    -- | Function used to format notifications, takes the notifications from first to last
+    notificationFormatter :: [Notification] -> T.Text
   }
 
 defaultFormatter :: [Notification] -> T.Text
-defaultFormatter ns =
-  let count = length ns
-      n = head ns
-      prefix = if count == 1
-               then ""
-               else "(" <> T.pack (show count) <> ") "
-      msg =  if T.null (noteBody n)
-             then noteSummary n
-             else noteSummary n <> ": " <> noteBody n
-  in "<span fgcolor='yellow'>" <> prefix <> "</span>" <> msg
+defaultFormatter [] = ""
+defaultFormatter (n : ns) =
+  let count = length ns + 1
+      prefix =
+        if count == 1
+          then ""
+          else "(" <> T.pack (show count) <> ") "
+      msg =
+        if T.null (noteBody n)
+          then noteSummary n
+          else noteSummary n <> ": " <> noteBody n
+   in "<span fgcolor='yellow'>" <> prefix <> "</span>" <> msg
 
 -- | The default formatter is one of
 -- * Summary : Body
@@ -226,25 +214,32 @@ defaultFormatter ns =
 -- depending on the presence of a notification body, and where N is the number of queued notifications.
 defaultNotificationConfig :: NotificationConfig
 defaultNotificationConfig =
-  NotificationConfig { notificationMaxTimeout = Nothing
-                     , notificationMaxLength = 100
-                     , notificationFormatter = defaultFormatter
-                     }
+  NotificationConfig
+    { notificationMaxTimeout = Nothing,
+      notificationMaxLength = 100,
+      notificationFormatter = defaultFormatter
+    }
 
 instance Default NotificationConfig where
   def = defaultNotificationConfig
 
 -- | Create a new notification area with the given configuration.
-notifyAreaNew :: MonadIO m => NotificationConfig -> m Widget
+notifyAreaNew :: (MonadIO m) => NotificationConfig -> m Widget
 notifyAreaNew cfg = liftIO $ do
   frame <- frameNew Nothing
+  _ <- widgetSetClassGI frame "notifications-frame"
   box <- boxNew OrientationHorizontal 3
+  _ <- widgetSetClassGI box "notifications-box"
   textArea <- labelNew (Nothing :: Maybe Text)
+  _ <- widgetSetClassGI textArea "notification-text"
   button <- eventBoxNew
+  _ <- widgetSetClassGI button "notification-close"
   sep <- separatorNew OrientationHorizontal
+  _ <- widgetSetClassGI sep "notification-separator"
 
   bLabel <- labelNew (Nothing :: Maybe Text)
   widgetSetName bLabel "NotificationCloseButton"
+  _ <- widgetSetClassGI bLabel "notification-close-label"
   labelSetMarkup bLabel "×"
 
   labelSetMaxWidthChars textArea (fromIntegral $ notificationMaxLength cfg)
@@ -264,6 +259,7 @@ notifyAreaNew cfg = liftIO $ do
   _ <- onWidgetButtonReleaseEvent button (userCancel s)
 
   realizableWrapper <- boxNew OrientationHorizontal 0
+  _ <- widgetSetClassGI realizableWrapper "notifications"
   boxPackStart realizableWrapper frame False False 0
   widgetShow realizableWrapper
 
@@ -277,10 +273,8 @@ notifyAreaNew cfg = liftIO $ do
 
   -- Don't show the widget by default - it will appear when needed
   toWidget realizableWrapper
-
   where
-    -- | Close the current note and pull up the next, if any
+    -- \| Close the current note and pull up the next, if any
     userCancel s _ = do
       noteNext s
-      wakeupDisplayThread s
       return True

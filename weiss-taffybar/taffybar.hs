@@ -1,101 +1,80 @@
 module Main where
 
 import Data.Default (def)
-import System.Taffybar (startTaffybar)
-import System.Taffybar.Context (TaffybarConfig (..))
+import GI.Gdk qualified as Gdk
+import Paths_weiss_xmonad (getDataFileName)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath (takeDirectory)
+import System.Taffybar (getTaffyFile, startTaffybar)
+import System.Taffybar.Context (TaffyIO, TaffybarConfig)
 import System.Taffybar.Hooks
-import System.Taffybar.Information.CPU
-import System.Taffybar.Information.Memory
 import System.Taffybar.SimpleConfig
-import System.Taffybar.Widget
-import System.Taffybar.Widget.Generic.PollingGraph
+import Widgets
 
-transparent
-  , yellow1
-  , yellow2
-  , green1
-  , green2
-  , taffyBlue ::
-    (Double, Double, Double, Double)
-transparent = (0.0, 0.0, 0.0, 0.0)
-yellow1 = (0.9453125, 0.63671875, 0.2109375, 1.0)
-yellow2 = (0.9921875, 0.796875, 0.32421875, 1.0)
-green1 = (0, 1, 0, 1)
-green2 = (1, 0, 1, 0.5)
-taffyBlue = (0.129, 0.588, 0.953, 1)
+-- End widgets are packed from the right edge inward.
+fullBar :: SimpleTaffyConfig
+fullBar =
+  defBar
+    { startWidgets = [workspaces]
+    , centerWidgets = [clock]
+    , endWidgets = [disk, memory, cpu, media]
+    }
 
-myGraphConfig, netCfg, memCfg, cpuCfg :: GraphConfig
-myGraphConfig =
+compactBar :: SimpleTaffyConfig
+compactBar =
+  defBar
+    { startWidgets = [mediaCompact]
+    , centerWidgets = [clock]
+    , endWidgets = [tray, network]
+    , barCssClasses = ["weiss-bar", "weiss-compact"]
+    , widgetSpacing = 4
+    }
+
+-- Appearance and placement shared by both layouts.
+defBar :: SimpleTaffyConfig
+defBar =
   def
-    { graphPadding = 0
-    , graphBorderWidth = 0
-    , graphWidth = 75
-    , graphBackgroundColor = transparent
-    }
-netCfg =
-  myGraphConfig
-    { graphDataColors = [yellow1, yellow2]
-    , graphLabel = Just "net"
-    }
-memCfg =
-  myGraphConfig
-    { graphDataColors = [taffyBlue]
-    , graphLabel = Just "mem"
-    }
-cpuCfg =
-  myGraphConfig
-    { graphDataColors = [green1, green2]
-    , graphLabel = Just "cpu"
+    { barCssClasses = ["weiss-bar"]
+    , monitorsAction = useAllMonitors
+    , barPosition = Top
+    , barPadding = 4
+    , barHeight = ExactSize 28
+    , widgetSpacing = 6
     }
 
-memCallback :: IO [Double]
-memCallback = do
-  mi <- parseMeminfo
-  return [memoryUsedRatio mi]
+barConfig :: [FilePath] -> Bool -> SimpleTaffyConfig
+barConfig stylesheets compact =
+  (if compact then compactBar else fullBar) {cssPaths = stylesheets}
 
-cpuCallback :: IO [Double]
-cpuCallback = do
-  (_, systemLoad, totalLoad) <- cpuLoad
-  return [totalLoad, systemLoad]
+-- Use monitor geometry rather than connector names or ordering, so rotation
+-- and monitor changes select the appropriate layout automatically.
+configForMonitor :: [FilePath] -> Int -> TaffyIO SimpleMonitorConfig
+configForMonitor stylesheets monitorNumber = do
+  display <- Gdk.displayGetDefault
+  monitor <- maybe (pure Nothing) (\d -> Gdk.displayGetMonitor d $ fromIntegral monitorNumber) display
+  compact <- case monitor of
+    Nothing -> pure True
+    Just m -> do
+      geometry <- Gdk.monitorGetGeometry m
+      width <- Gdk.getRectangleWidth geometry
+      height <- Gdk.getRectangleHeight geometry
+      pure $ height > width || width < 1600
+  pure $
+    SimpleMonitorConfig
+      (if compact then "compact" else "full")
+      (barConfig stylesheets compact)
 
-exampleTaffybarConfig :: TaffybarConfig
-exampleTaffybarConfig =
-  let myWorkspacesConfig =
-        def
-          { minIcons = 1
-          , widgetGap = 0
-          , showWorkspaceFn = hideEmpty
-          }
-      workspaces = workspacesNew myWorkspacesConfig
-      cpu = pollingGraphNew cpuCfg 0.5 cpuCallback
-      mem = pollingGraphNew memCfg 1 memCallback
-      net = networkGraphNew netCfg Nothing
-      clock = textClockNewWith def
-      layout = layoutNew def
-      windowsW = windowsNew def
-      tray = sniTrayNew
-      myConfig =
-        def
-          { -- startWidgets =
-            --     workspaces : map (>>= buildContentsBox) [layout, windowsW]
-            -- ,
-            endWidgets =
-              fmap
-                (>>= buildContentsBox)
-                [ batteryIconNew
-                , clock
-                , tray
-                , cpu
-                , mem
-                , net
-                , mpris2New
-                ]
-          , barPosition = Top
-          , barPadding = 10
-          , barHeight = ExactSize 35
-          , widgetSpacing = 0
-          }
-   in withLogServer $ withToggleServer $ toTaffybarConfig myConfig
+taffybarConfig :: [FilePath] -> TaffybarConfig
+taffybarConfig stylesheets =
+  withLogServer $
+    withToggleServer $
+      toTaffybarConfigPerMonitor
+        (barConfig stylesheets False)
+        (configForMonitor stylesheets)
 
 main :: IO ()
-main = startTaffybar exampleTaffybarConfig
+main = do
+  theme <- getDataFileName "weiss-taffybar/taffybar.css"
+  userTheme <- getTaffyFile "taffybar.css"
+  createDirectoryIfMissing True $ takeDirectory userTheme
+  startTaffybar $ taffybarConfig [theme, userTheme]

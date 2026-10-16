@@ -11,6 +11,7 @@ tested-with:     GHC ==9.6.6
 extra-doc-files:
   CHANGELOG.md
   README.md
+data-files:      weiss-taffybar/taffybar.css
 
 -- category:
 -- description:     description
@@ -106,7 +107,6 @@ library
     WeissPromptPass
     WeissScratchpad
     WeissWindowOperations
-    WeissXmobar
     WeissXMonad
     WorkspaceFamily
 
@@ -117,15 +117,27 @@ executable weiss-xmonad-exe
   build-depends:  weiss-xmonad
   ghc-options:    -threaded -rtsopts -with-rtsopts=-N
 
-executable weiss-taffybar-exe
+executable taffybar
   import:         common-options
   hs-source-dirs: weiss-taffybar
   main-is:        taffybar.hs
+  other-modules:
+    Paths_weiss_xmonad
+    WorkspaceGroups
+    Widgets
+  autogen-modules: Paths_weiss_xmonad
   build-depends:
     , base
     , bytestring
-    , data-default 
-    , taffybar      >=4.1.0
+    , data-default
+    , directory
+    , filepath
+    , gi-gdk3
+    , gi-gtk3
+    , gtk-sni-tray
+    , taffybar      >=7.4.2
+    , text
+    , transformers
     , xmonad        >=0.18
 
   ghc-options:    -threaded -rtsopts -with-rtsopts=-N

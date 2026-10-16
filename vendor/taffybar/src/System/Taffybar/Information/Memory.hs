@@ -1,57 +1,119 @@
-module System.Taffybar.Information.Memory (
-  MemoryInfo(..),
-  parseMeminfo
-  ) where
+-- | Parse memory usage data from Linux @/proc/meminfo@ and expose a derived
+-- summary record used by memory widgets.
+module System.Taffybar.Information.Memory
+  ( MemoryInfo (..),
+    parseMeminfo,
+    getMemoryInfoChan,
+    getMemoryInfoState,
+  )
+where
+
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (MVar, newMVar, readMVar, swapMVar)
+import Control.Concurrent.STM.TChan (TChan, dupTChan, newBroadcastTChanIO, readTChan, writeTChan)
+import Control.Monad (forever, void, when)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.STM (atomically)
+import qualified Data.ByteString.Char8 as BS8
+import System.Taffybar.Context (TaffyIO, getStateDefault)
+import System.Taffybar.Information.Wakeup (getWakeupChannelForDelay)
+import Text.Read (readMaybe)
 
 toMB :: String -> Double
-toMB size = (read size :: Double) / 1024
+toMB size = maybe 0 (/ 1024) (readMaybe size)
 
+safeRatio :: Double -> Double -> Double
+safeRatio
+  _
+  0 = 0
+safeRatio numerator denominator = numerator / denominator
+
+-- | Snapshot of parsed memory and swap values from @/proc/meminfo@.
 data MemoryInfo = MemoryInfo
-  { memoryTotal :: Double
-  , memoryFree :: Double
-  , memoryBuffer :: Double
-  , memoryCache :: Double
-  , memorySwapTotal :: Double
-  , memorySwapFree :: Double
-  , memorySwapUsed :: Double -- swapTotal - swapFree
-  , memorySwapUsedRatio :: Double -- swapUsed / swapTotal
-  , memoryAvailable :: Double -- An estimate of how much memory is available
-  , memoryRest :: Double -- free + buffer + cache
-  , memoryUsed :: Double -- total - rest
-  , memoryUsedRatio :: Double -- used / total
+  { memoryTotal :: Double,
+    memoryFree :: Double,
+    memoryBuffer :: Double,
+    memoryCache :: Double,
+    memorySwapTotal :: Double,
+    memorySwapFree :: Double,
+    memorySwapUsed :: Double, -- swapTotal - swapFree
+    memorySwapUsedRatio :: Double, -- swapUsed / swapTotal
+    memoryAvailable :: Double, -- An estimate of how much memory is available
+    memoryRest :: Double, -- free + buffer + cache
+    memoryUsed :: Double, -- total - rest
+    memoryUsedRatio :: Double -- used / total
   }
+  deriving (Eq, Show)
 
 emptyMemoryInfo :: MemoryInfo
 emptyMemoryInfo = MemoryInfo 0 0 0 0 0 0 0 0 0 0 0 0
 
 parseLines :: [String] -> MemoryInfo -> MemoryInfo
-parseLines (line:rest) memInfo = parseLines rest newMemInfo
-  where newMemInfo = case words line of
-                       (label:size:_) ->
-                         case label of
-                           "MemTotal:"     -> memInfo { memoryTotal = toMB size }
-                           "MemFree:"      -> memInfo { memoryFree = toMB size }
-                           "MemAvailable:" -> memInfo { memoryAvailable = toMB size }
-                           "Buffers:"      -> memInfo { memoryBuffer = toMB size }
-                           "Cached:"       -> memInfo { memoryCache = toMB size }
-                           "SwapTotal:"    -> memInfo { memorySwapTotal = toMB size }
-                           "SwapFree:"     -> memInfo { memorySwapFree = toMB size }
-                           _               -> memInfo
-                       _ -> memInfo
+parseLines (line : rest) memInfo = parseLines rest newMemInfo
+  where
+    newMemInfo = case words line of
+      (label : size : _) ->
+        case label of
+          "MemTotal:" -> memInfo {memoryTotal = toMB size}
+          "MemFree:" -> memInfo {memoryFree = toMB size}
+          "MemAvailable:" -> memInfo {memoryAvailable = toMB size}
+          "Buffers:" -> memInfo {memoryBuffer = toMB size}
+          "Cached:" -> memInfo {memoryCache = toMB size}
+          "SwapTotal:" -> memInfo {memorySwapTotal = toMB size}
+          "SwapFree:" -> memInfo {memorySwapFree = toMB size}
+          _ -> memInfo
+      _ -> memInfo
 parseLines _ memInfo = memInfo
 
+readAsciiFileStrict :: FilePath -> IO String
+readAsciiFileStrict = fmap BS8.unpack . BS8.readFile
+
+-- | Read @/proc/meminfo@ and return memory/swap totals and usage ratios in MiB.
 parseMeminfo :: IO MemoryInfo
 parseMeminfo = do
-  s <- readFile "/proc/meminfo"
+  s <- readAsciiFileStrict "/proc/meminfo"
   let m = parseLines (lines s) emptyMemoryInfo
       rest = memoryFree m + memoryBuffer m + memoryCache m
       used = memoryTotal m - rest
-      usedRatio = used / memoryTotal m
+      usedRatio = safeRatio used (memoryTotal m)
       swapUsed = memorySwapTotal m - memorySwapFree m
-      swapUsedRatio = swapUsed / memorySwapTotal m
-  return m { memoryRest = rest
-           , memoryUsed = used
-           , memoryUsedRatio = usedRatio
-           , memorySwapUsed = swapUsed
-           , memorySwapUsedRatio = swapUsedRatio
-           }
+      swapUsedRatio = safeRatio swapUsed (memorySwapTotal m)
+  return
+    m
+      { memoryRest = rest,
+        memoryUsed = used,
+        memoryUsedRatio = usedRatio,
+        memorySwapUsed = swapUsed,
+        memorySwapUsedRatio = swapUsedRatio
+      }
+
+newtype MemoryInfoChanVar
+  = MemoryInfoChanVar (TChan MemoryInfo, MVar MemoryInfo)
+
+-- | Return the process-wide memory information stream. The first caller's
+-- interval wins; subsequent widgets share the same sampler.
+getMemoryInfoChan :: Double -> TaffyIO (TChan MemoryInfo)
+getMemoryInfoChan interval = do
+  MemoryInfoChanVar (chan, _) <- getMemoryInfoChanVar interval
+  pure chan
+
+-- | Read the latest snapshot from the shared memory sampler.
+getMemoryInfoState :: Double -> TaffyIO MemoryInfo
+getMemoryInfoState interval = do
+  MemoryInfoChanVar (_, var) <- getMemoryInfoChanVar interval
+  liftIO $ readMVar var
+
+getMemoryInfoChanVar :: Double -> TaffyIO MemoryInfoChanVar
+getMemoryInfoChanVar interval = getStateDefault $ do
+  wakeupChan <- getWakeupChannelForDelay $ max 0.000001 interval
+  ourWakeupChan <- liftIO $ atomically $ dupTChan wakeupChan
+  liftIO $ do
+    initialInfo <- parseMeminfo
+    chan <- newBroadcastTChanIO
+    var <- newMVar initialInfo
+    void $ forkIO $ forever $ do
+      void $ atomically $ readTChan ourWakeupChan
+      info <- parseMeminfo
+      old <- swapMVar var info
+      when (info /= old) $ atomically $ writeTChan chan info
+    pure $ MemoryInfoChanVar (chan, var)

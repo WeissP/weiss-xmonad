@@ -2,20 +2,12 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    gtk-sni-tray = {
-      url = "github:taffybar/gtk-sni-tray/master";
-      flake = false;
-    };
-    gtk-strut = {
-      url = "github:taffybar/gtk-strut/master";
-      flake = false;
-    };
     xmonad = {
       url = "github:xmonad/xmonad/master";
       flake = false;
     };
-    status-notifier-item = {
-      url = "github:taffybar/status-notifier-item";
+    xmonad-contrib = {
+      url = "github:xmonad/xmonad-contrib/master";
       flake = false;
     };
     weeder-nix = {
@@ -24,7 +16,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, gtk-sni-tray, gtk-strut, status-notifier-item, xmonad, weeder-nix }: let
+  outputs = { self, nixpkgs, flake-utils, xmonad, xmonad-contrib, weeder-nix }: let
     inherit (self) lib;
     inherit (nixpkgs.lib) composeExtensions;
     inherit (flake-utils.lib) eachSystem;
@@ -34,8 +26,8 @@
     # This flake will generate packages using the following compilers
     # from nixpkgs. The "default" package in this flake will be built with
     # the whichever GHC nixpkgs uses to generate pkgs.haskellPackages.
-    # Currently in nixpkgs: haskellPackages = haskell.packages.ghc96
-    supportedCompilers = [ "ghc92" "ghc94" "ghc96" "ghc98" ];
+    # Currently in nixpkgs: haskellPackages = haskell.packages.ghc910
+    supportedCompilers = [ "ghc98" "ghc910" ];
 
   in {
     lib = nixpkgs.lib.extend (composeExtensions
@@ -43,8 +35,16 @@
       (final: prev: {
         taffybar = prev.taffybar.extend (final: prev: {
           sourceOverrides = prev.sourceOverrides // {
-            # Flake input dependencies which we want to build from source.
-            inherit gtk-strut gtk-sni-tray status-notifier-item xmonad;
+            # Monorepo-local dependencies built from source.
+            dbus-hslogger = ./packages/dbus-hslogger;
+            dbus-menu = ./packages/dbus-menu;
+            gtk-scaling-image = ./packages/gtk-scaling-image;
+            gtk-strut = ./packages/gtk-strut;
+            gtk-sni-tray = ./packages/gtk-sni-tray;
+            gi-wireplumber = ./packages/gi-wireplumber;
+            status-notifier-item = ./packages/status-notifier-item;
+            xdg-desktop-entry = ./packages/xdg-desktop-entry;
+            inherit xmonad xmonad-contrib;
           };
         });
       }));
@@ -65,6 +65,20 @@
       overlays = [ self.overlays.default ];
       config.allowBroken = true;
     };
+    taffybarPackage = pkgs.haskellPackages.taffybar;
+    taffybarPackageNoChecks = pkgs.haskell.lib.dontCheck taffybarPackage;
+    taffybarPackageWithChecks = pkgs.haskell.lib.doCheck taffybarPackage;
+
+    mkHyprlandAppearanceVmTest =
+      { compare ? false
+      , goldenFile ? null
+      }:
+      import ./nix/appearance-hyprland-vm-test.nix {
+        inherit pkgs;
+        taffybarPackage = taffybarPackageNoChecks;
+        cssFile = ./test/data/appearance-test.css;
+        inherit compare goldenFile;
+      };
 
   in {
     devShells = {
@@ -73,10 +87,17 @@
       (compiler: pkgs.haskell.packages.${compiler}.taffybar.env);
 
     packages = {
-      default = self.packages.${system}.taffybar;
-      inherit (pkgs.haskellPackages)
-        taffybar
-        my-taffybar;
+      default = taffybarPackageNoChecks;
+      taffybar = taffybarPackageNoChecks;
+      inherit (pkgs.haskellPackages) my-taffybar;
+      gtk-scaling-image = pkgs.haskellPackages."gtk-scaling-image";
+      gtk-sni-tray = pkgs.haskellPackages."gtk-sni-tray";
+      gtk-strut = pkgs.haskellPackages."gtk-strut";
+      gi-wireplumber = pkgs.haskellPackages."gi-wireplumber";
+      status-notifier-item = pkgs.haskellPackages."status-notifier-item";
+      dbus-menu = pkgs.haskellPackages."dbus-menu";
+      dbus-hslogger = pkgs.haskellPackages."dbus-hslogger";
+      xdg-desktop-entry = pkgs.haskellPackages."xdg-desktop-entry";
     } // lib.listToAttrs (map (compiler: {
       name = "${compiler}-taffybar";
       value = pkgs.haskell.packages.${compiler}.taffybar;
@@ -84,11 +105,15 @@
       tested-with = pkgs.runCommand "taffybar-tested-with.cabal" {} ''
         echo "tested-with: ${lib.concatMapStringsSep ", " (c: "GHC == ${pkgs.haskell.compiler.${c}.version}") supportedCompilers}" > $out
       '';
+    } // lib.optionalAttrs (system == "x86_64-linux") {
+      appearance-hyprland-snapshot = mkHyprlandAppearanceVmTest { };
     };
 
     checks = {
+      ormolu = pkgs.haskellPackages.taffybar.ormolu;
       hlint = pkgs.haskellPackages.taffybar.hlint;
       ghc-warnings = pkgs.haskellPackages.taffybar.fail-on-all-warnings;
+      tests = taffybarPackageWithChecks;
     } // lib.optionalAttrs (system == "x86_64-linux") {
       dependency-graph = weeder-nix.lib.${system}.makeWeederCheck {
         weederToml = ./weeder.toml;
@@ -96,6 +121,11 @@
         packages = [ "taffybar" ];
         # Never fail - too many false positives at the moment.
         reportOnly = true;
+      };
+
+      appearance-hyprland = mkHyprlandAppearanceVmTest {
+        compare = true;
+        goldenFile = ./test/data/appearance-hyprland-bar.png;
       };
     };
   });

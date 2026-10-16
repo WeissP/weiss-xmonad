@@ -1,4 +1,4 @@
-module WorkspaceFamily (myWorkspaces, workspaceKeys, logWorkspaceFamilies) where
+module WorkspaceFamily (myWorkspaces, workspaceKeys) where
 
 import Control.Monad (when)
 import Control.Monad.Extra (fromMaybeM, pureIf)
@@ -12,7 +12,6 @@ import Data.Hashable
 import Data.List (
   elemIndex,
   find,
-  intercalate,
   intersperse,
   isPrefixOf,
   singleton,
@@ -209,9 +208,3 @@ swapElements n m (x : xs)
   | otherwise = x : swapElements n m xs
 
 myWorkspaces = [idWithMember f m | f <- allFamilies, m <- allFamilyMembers]
-
-logWorkspaceFamilies :: Logger
-logWorkspaceFamilies = do
-  OrderedNumFamilies nums <- XS.get
-  ids <- traverse workspaceID (take 2 nums)
-  return $ Just $ intercalate "→" ids

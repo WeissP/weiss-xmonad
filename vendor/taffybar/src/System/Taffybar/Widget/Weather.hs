@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 -- | This module defines a simple textual weather widget that polls
 -- NOAA for weather data.  To find your weather station, you can use
 -- either of the following:
@@ -61,15 +62,15 @@
 -- Implementation Note: the weather data parsing code is taken from xmobar. This
 -- version of the code makes direct HTTP requests instead of invoking a separate
 -- cURL process.
-
 module System.Taffybar.Widget.Weather
-  ( WeatherConfig(..)
-  , WeatherInfo(..)
-  , WeatherFormatter(WeatherFormatter)
-  , weatherNew
-  , weatherCustomNew
-  , defaultWeatherConfig
-  ) where
+  ( WeatherConfig (..),
+    WeatherInfo (..),
+    WeatherFormatter (WeatherFormatter),
+    weatherNew,
+    weatherCustomNew,
+    defaultWeatherConfig,
+  )
+where
 
 import Control.Monad.IO.Class
 import qualified Data.ByteString.Lazy as LB
@@ -77,34 +78,37 @@ import Data.List (stripPrefix)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import GI.GLib(markupEscapeText)
+import GI.GLib (markupEscapeText)
 import GI.Gtk
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.HTTP.Types.Status
 import System.Log.Logger
+import System.Taffybar.Widget.Generic.PollingLabel
+import System.Taffybar.Widget.Util (widgetSetClassGI)
 import Text.Parsec
 import Text.Printf
+import Text.Read (readMaybe)
 import Text.StringTemplate
 
-import System.Taffybar.Widget.Generic.PollingLabel
-
+-- | Parsed NOAA weather report values used by the weather widget.
 data WeatherInfo = WI
-  { stationPlace :: String
-  , stationState :: String
-  , year :: String
-  , month :: String
-  , day :: String
-  , hour :: String
-  , wind :: String
-  , visibility :: String
-  , skyCondition :: String
-  , tempC :: Int
-  , tempF :: Int
-  , dewPoint :: String
-  , humidity :: Int
-  , pressure :: Int
-  } deriving (Show)
+  { stationPlace :: String,
+    stationState :: String,
+    year :: String,
+    month :: String,
+    day :: String,
+    hour :: String,
+    wind :: String,
+    visibility :: String,
+    skyCondition :: String,
+    tempC :: Int,
+    tempF :: Int,
+    dewPoint :: String,
+    humidity :: Int,
+    pressure :: Int
+  }
+  deriving (Show)
 
 -- Parsers stolen from xmobar
 
@@ -118,9 +122,9 @@ pTime = do
   _ <- char '.'
   d <- getNumbersAsString
   _ <- char ' '
-  (h:hh:mi:mimi) <- getNumbersAsString
+  (h : hh : mi : mimi) <- getNumbersAsString
   _ <- char ' '
-  return (y, m, d , [h]++[hh]++":"++[mi]++mimi)
+  return (y, m, d, [h] ++ [hh] ++ ":" ++ [mi] ++ mimi)
 
 pTemp :: Parser (Int, Int)
 pTemp = do
@@ -129,32 +133,39 @@ pTemp = do
   _ <- manyTill anyChar $ char '('
   c <- manyTill num $ char ' '
   _ <- skipRestOfLine
-  return (floor (read c :: Double), floor (read f :: Double))
+  parsedTempC <- parseNumber "temperature Celsius" c :: Parser Double
+  parsedTempF <- parseNumber "temperature Fahrenheit" f :: Parser Double
+  return (floor parsedTempC, floor parsedTempF)
 
 pRh :: Parser Int
 pRh = do
   s <- manyTill digit $ char '%' <|> char '.'
-  return $ read s
+  parseNumber "relative humidity" s
 
 pPressure :: Parser Int
 pPressure = do
   _ <- manyTill anyChar $ char '('
   s <- manyTill digit $ char ' '
   _ <- skipRestOfLine
-  return $ read s
+  parseNumber "pressure" s
+
+parseNumber :: (Read a) => String -> String -> Parser a
+parseNumber valueLabel raw =
+  maybe (fail $ "Could not parse " ++ valueLabel ++ ": " ++ raw) return $
+    readMaybe raw
 
 parseData :: Parser WeatherInfo
 parseData = do
-  st <- getAllBut ","
+  st <- getAllBut ','
   _ <- space
-  ss <- getAllBut "("
-  _ <- skipRestOfLine >> getAllBut "/"
-  (y,m,d,h) <- pTime
+  ss <- getAllBut '('
+  _ <- skipRestOfLine >> getAllBut '/'
+  (y, m, d, h) <- pTime
   w <- getAfterString "Wind: "
   v <- getAfterString "Visibility: "
   sk <- getAfterString "Sky conditions: "
   _ <- skipTillString "Temperature: "
-  (tC,tF) <- pTemp
+  (tC, tF) <- pTemp
   dp <- getAfterString "Dew Point: "
   _ <- skipTillString "Relative Humidity: "
   rh <- pRh
@@ -163,9 +174,8 @@ parseData = do
   _ <- manyTill skipRestOfLine eof
   return $ WI st ss y m d h w v sk tC tF dp rh p
 
-getAllBut :: String -> Parser String
-getAllBut s =
-    manyTill (noneOf s) (char $ head s)
+getAllBut :: Char -> Parser String
+getAllBut c = manyTill (noneOf [c]) (char c)
 
 getAfterString :: String -> Parser String
 getAfterString s = pAfter <|> return ("<" ++ s ++ " not found!>")
@@ -176,7 +186,7 @@ getAfterString s = pAfter <|> return ("<" ++ s ++ " not found!>")
 
 skipTillString :: String -> Parser String
 skipTillString s =
-    manyTill skipRestOfLine $ string s
+  manyTill skipRestOfLine $ string s
 
 getNumbersAsString :: Parser String
 getNumbersAsString = skipMany space >> many1 digit >>= \n -> return n
@@ -191,8 +201,9 @@ downloadURL :: Manager -> Request -> IO (Either String String)
 downloadURL mgr request = do
   response <- httpLbs request mgr
   case responseStatus response of
-    s | s >= status200 && s < status300 ->
-      return $ Right (T.unpack . T.decodeUtf8 . LB.toStrict $ responseBody response)
+    s
+      | s >= status200 && s < status300 ->
+          return $ Right (T.unpack . T.decodeUtf8 . LB.toStrict $ responseBody response)
     otherStatus ->
       return . Left $ "HTTP 2XX status was expected but received " ++ show otherStatus
 
@@ -209,27 +220,31 @@ getWeather mgr url = do
 defaultFormatter :: StringTemplate String -> WeatherInfo -> String
 defaultFormatter tpl wi = render tpl'
   where
-    tpl' = setManyAttrib [ ("stationPlace", stationPlace wi)
-                         , ("stationState", stationState wi)
-                         , ("year", year wi)
-                         , ("month", month wi)
-                         , ("day", day wi)
-                         , ("hour", hour wi)
-                         , ("wind", wind wi)
-                         , ("visibility", visibility wi)
-                         , ("skyCondition", skyCondition wi)
-                         , ("tempC", show (tempC wi))
-                         , ("tempF", show (tempF wi))
-                         , ("dewPoint", dewPoint wi)
-                         , ("humidity", show (humidity wi))
-                         , ("pressure", show (pressure wi))
-                         ] tpl
+    tpl' =
+      setManyAttrib
+        [ ("stationPlace", stationPlace wi),
+          ("stationState", stationState wi),
+          ("year", year wi),
+          ("month", month wi),
+          ("day", day wi),
+          ("hour", hour wi),
+          ("wind", wind wi),
+          ("visibility", visibility wi),
+          ("skyCondition", skyCondition wi),
+          ("tempC", show (tempC wi)),
+          ("tempF", show (tempF wi)),
+          ("dewPoint", dewPoint wi),
+          ("humidity", show (humidity wi)),
+          ("pressure", show (pressure wi))
+        ]
+        tpl
 
-getCurrentWeather :: IO (Either String WeatherInfo)
-    -> StringTemplate String
-    -> StringTemplate String
-    -> WeatherFormatter
-    -> IO (T.Text, Maybe T.Text)
+getCurrentWeather ::
+  IO (Either String WeatherInfo) ->
+  StringTemplate String ->
+  StringTemplate String ->
+  WeatherFormatter ->
+  IO (T.Text, Maybe T.Text)
 getCurrentWeather getter labelTpl tooltipTpl formatter = do
   dat <- getter
   case dat of
@@ -257,19 +272,26 @@ baseUrl = "https://tgftp.nws.noaa.gov/data/observations/metar/decoded"
 -- The default interpolates variables into a string as described
 -- above.  Custom formatters can do basically anything.
 data WeatherFormatter
-  = WeatherFormatter (WeatherInfo -> String) -- ^ Specify a custom formatter for 'WeatherInfo'
-  | DefaultWeatherFormatter -- ^ Use the default StringTemplate formatter
+  = -- | Specify a custom formatter for 'WeatherInfo'
+    WeatherFormatter (WeatherInfo -> String)
+  | -- | Use the default StringTemplate formatter
+    DefaultWeatherFormatter
 
 -- | The configuration for the weather widget.  You can provide a custom
 -- format string through 'weatherTemplate' as described above, or you can
 -- provide a custom function to turn a 'WeatherInfo' into a String via the
 -- 'weatherFormatter' field.
 data WeatherConfig = WeatherConfig
-  { weatherStation :: String -- ^ The weather station to poll. No default
-  , weatherTemplate :: String -- ^ Template string, as described above.  Default: $tempF$ °F
-  , weatherTemplateTooltip :: String -- ^ Template string, as described above.  Default: $tempF$ °F
-  , weatherFormatter :: WeatherFormatter -- ^ Default: substitute in all interpolated variables (above)
-  , weatherProxy :: Maybe String -- ^ The proxy server, e.g. "http://proxy:port". Default: Nothing
+  { -- | The weather station to poll. No default
+    weatherStation :: String,
+    -- | Template string, as described above.  Default: $tempF$ °F
+    weatherTemplate :: String,
+    -- | Template string, as described above.  Default: $tempF$ °F
+    weatherTemplateTooltip :: String,
+    -- | Default: substitute in all interpolated variables (above)
+    weatherFormatter :: WeatherFormatter,
+    -- | The proxy server, e.g. "http://proxy:port". Default: Nothing
+    weatherProxy :: Maybe String
   }
 
 -- | A sensible default configuration for the weather widget that just
@@ -277,29 +299,32 @@ data WeatherConfig = WeatherConfig
 defaultWeatherConfig :: String -> WeatherConfig
 defaultWeatherConfig station =
   WeatherConfig
-  { weatherStation = station
-  , weatherTemplate = "$tempF$ °F"
-  , weatherTemplateTooltip =
-      unlines
-        [ "Station: $stationPlace$"
-        , "Time: $day$.$month$.$year$ $hour$"
-        , "Temperature: $tempF$ °F"
-        , "Pressure: $pressure$ hPa"
-        , "Wind: $wind$"
-        , "Visibility: $visibility$"
-        , "Sky Condition: $skyCondition$"
-        , "Dew Point: $dewPoint$"
-        , "Humidity: $humidity$"
-        ]
-  , weatherFormatter = DefaultWeatherFormatter
-  , weatherProxy = Nothing
-  }
+    { weatherStation = station,
+      weatherTemplate = "$tempF$ °F",
+      weatherTemplateTooltip =
+        unlines
+          [ "Station: $stationPlace$",
+            "Time: $day$.$month$.$year$ $hour$",
+            "Temperature: $tempF$ °F",
+            "Pressure: $pressure$ hPa",
+            "Wind: $wind$",
+            "Visibility: $visibility$",
+            "Sky Condition: $skyCondition$",
+            "Dew Point: $dewPoint$",
+            "Humidity: $humidity$"
+          ],
+      weatherFormatter = DefaultWeatherFormatter,
+      weatherProxy = Nothing
+    }
 
 -- | Create a periodically-updating weather widget that polls NOAA.
-weatherNew :: MonadIO m
-           => WeatherConfig -- ^ Configuration to render
-           -> Double     -- ^ Polling period in _minutes_
-           -> m GI.Gtk.Widget
+weatherNew ::
+  (MonadIO m) =>
+  -- | Configuration to render
+  WeatherConfig ->
+  -- | Polling period in _minutes_
+  Double ->
+  m GI.Gtk.Widget
 weatherNew cfg delayMinutes = liftIO $ do
   -- TODO: add explicit proxy host/port to WeatherConfig and
   -- get rid of this ugly stringly-typed setting
@@ -308,32 +333,43 @@ weatherNew cfg delayMinutes = liftIO $ do
         Just str ->
           let strToBs = T.encodeUtf8 . T.pack
               noHttp = fromMaybe str $ stripPrefix "http://" str
-              (phost, pport) = case span (':'/=) noHttp of
+              (phost, pport) = case span (':' /=) noHttp of
                 (h, "") -> (strToBs h, 80) -- HTTP seems to assume 80 to be the default
-                (h, ':':p) -> (strToBs h, read p)
+                (h, ':' : p) -> (strToBs h, fromMaybe 80 (readMaybe p))
                 _ -> error "unreachable: broken span"
-          in useProxy $ Proxy phost pport
+           in useProxy $ Proxy phost pport
   mgr <- newManager $ managerSetProxy usedProxy tlsManagerSettings
   let url = printf "%s/%s.TXT" baseUrl (weatherStation cfg)
   let getter = getWeather mgr url
-  weatherCustomNew getter (weatherTemplate cfg) (weatherTemplateTooltip cfg)
-    (weatherFormatter cfg) delayMinutes
+  weatherCustomNew
+    getter
+    (weatherTemplate cfg)
+    (weatherTemplateTooltip cfg)
+    (weatherFormatter cfg)
+    delayMinutes
 
 -- | Create a periodically-updating weather widget using custom weather getter
-weatherCustomNew
-  :: MonadIO m
-  => IO (Either String WeatherInfo) -- ^ Weather querying action
-  -> String -- ^ Weather template
-  -> String -- ^ Weather template
-  -> WeatherFormatter -- ^ Weather formatter
-  -> Double -- ^ Polling period in _minutes_
-  -> m GI.Gtk.Widget
+weatherCustomNew ::
+  (MonadIO m) =>
+  -- | Weather querying action
+  IO (Either String WeatherInfo) ->
+  -- | Weather template
+  String ->
+  -- | Weather template
+  String ->
+  -- | Weather formatter
+  WeatherFormatter ->
+  -- | Polling period in _minutes_
+  Double ->
+  m GI.Gtk.Widget
 weatherCustomNew getter labelTpl tooltipTpl formatter delayMinutes = liftIO $ do
   let labelTpl' = newSTMP labelTpl
       tooltipTpl' = newSTMP tooltipTpl
 
-  l <- pollingLabelNewWithTooltip (delayMinutes * 60)
-       (getCurrentWeather getter labelTpl' tooltipTpl' formatter)
-
+  l <-
+    pollingLabelNewWithTooltip
+      (delayMinutes * 60)
+      (getCurrentWeather getter labelTpl' tooltipTpl' formatter)
+  _ <- widgetSetClassGI l "weather"
   GI.Gtk.widgetShowAll l
   return l

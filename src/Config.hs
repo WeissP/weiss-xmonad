@@ -2,10 +2,6 @@ module Config where
 
 import XMonad
 
-focusedTitleLength, unfocusedTitleLength :: Int
-focusedTitleLength = 40
-unfocusedTitleLength = 30
-
 myTerminal :: String
 myTerminal = "wezterm"
 

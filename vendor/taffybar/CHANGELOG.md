@@ -1,3 +1,612 @@
+# 7.4.2
+
+## Packaging
+
+* Widen dependency bounds to allow `aeson 2.3`, `containers 0.8`, and
+  `template-haskell 2.24` (#700). Thanks to @Vekhir.
+
+# 7.4.1
+
+## Fixes
+
+* Show empty workspaces in the default workspaces widget again, as before
+  5.2.0 (#698). Special workspaces remain hidden. Set
+  `showWorkspaceFn = \ws -> hideEmpty ws && not (workspaceIsSpecial ws)` to
+  hide empty workspaces.
+* Hidden workspaces no longer reserve `widgetGap` spacing or wrapper padding.
+
+# 7.4.0
+
+## Compatibility
+
+* `PrivacyInfo` gains a `PrivacyUnavailable` constructor. Custom exhaustive
+  pattern matches should handle unavailable monitoring; `privacyInfoError`
+  provides a total accessor for the error. Existing `activeNodes` accessors
+  continue to work.
+
+## Fixes
+
+* Restore workspace labels before window icons in the default widget layout
+  (#696). The bottom-left overlay remains available by setting
+  `widgetBuilder = labelOverlayWidgetBuilder`.
+* Initialize shared context state outside the registry lock, preventing
+  deadlocks when an initializer accesses another state type. Concurrent
+  callers share the result, and failed or cancelled initialization can be
+  retried (#695).
+* Keep the X11 request worker running after a synchronous request fails, while
+  preserving cancellation. Property buffers now stay inside the worker's
+  lifetime, and temporary error handlers are restored and released (#695).
+* Show a warning when privacy monitoring fails instead of implying that no
+  streams are active. Keep the last known activity visible and include the
+  collection error in the tooltip (#695).
+* Parse and safely quote desktop-entry command arguments, preserving quoted
+  arguments, field-code expansion, and literal percent signs without
+  interpreting arguments as shell expressions (#695).
+* Prevent an expired notification from removing its replacement. Each
+  notification generation has its own expiry, and formatted notification
+  markup is preserved instead of being truncated mid-tag (#695).
+* Apply the network graph's interface filter to its tooltip as well as its
+  samples, so both report traffic for the same interfaces (#695).
+* Share disk-usage polling by canonical path and polling interval, allowing
+  multiple filesystems and cadences without reusing the first widget's
+  settings (#695).
+* Keep open tray menus synchronized with layout and property updates, fixing
+  stale Wi-Fi lists and rejected clicks in nm-applet. Preserve hovered items
+  and open submenus when services renumber menu item IDs.
+
+## Packaging
+
+* Require `xdg-desktop-entry >= 0.1.1.7` and `dbus-menu >= 0.1.4.0` so Hackage
+  builds include the command-expansion and live-menu fixes.
+* Propagate Nix build and check failures in CI instead of reporting a successful
+  workflow after a failed build (#695).
+
+# 7.3.1
+
+## Fixes
+
+* Fix `unsubscribe` removing every X11 event listener *except* the one it was
+  asked to remove. Unsubscribed listeners kept firing while live ones were
+  dropped, which is why the workspaces widget could stop updating after a
+  display configuration change (#465). Thanks to @sgrb (#694).
+* Stop `autoSizeImage` (the `ImageResize` scaling strategy and
+  `imageMenuItemNew`) from growing without bound. Padding and border are now
+  read at allocation time instead of once at construction, and an allocation
+  that grows as a direct result of the pixbuf the widget just set is no longer
+  answered with a larger pixbuf. Previously a stale border reading made every
+  `size-allocate` request a slightly larger image, which pegged the CPU and
+  leaked memory until the process was killed.
+* Require `xdg-desktop-entry` with the fixed parser, so desktop files with
+  localised keys such as `GenericName[de]` resolve again. Before this, the
+  MPRIS2 player icon (and any other desktop-entry based icon lookup) fell back
+  to the default icon for most real-world desktop files.
+
+# 7.3.0
+
+## Breaking changes
+
+* `BarConfig` and `SimpleTaffyConfig` gained a `barCssClasses` field. Record
+  updates against `defaultSimpleTaffyConfig` are unaffected, but positional
+  construction and exhaustive pattern matches need updating.
+
+## Features
+
+* Add per-monitor simple bar configuration. `toTaffybarConfigPerMonitor` takes
+  a `SimpleMonitorConfig` per monitor, whose key identifies the bar: reusing a
+  key reuses the existing bar, and changing it rebuilds only that monitor's bar.
+* Apply user-specified CSS classes to bar windows via the new `barCssClasses`
+  field, so per-monitor bars can be styled independently.
+* Add channel-based CPU package power telemetry in the new
+  `System.Taffybar.Information.CPUPower` module, along with
+  `cpuMonitorNewWithHoverAndPower` for a CPU monitor that reports package
+  wattage in its label and tooltip.
+* Refresh the disk usage widget on click via `diskUsageLabelNewWithRefresh` and
+  `forceDiskUsageRefresh`, so a stale reading can be updated on demand rather
+  than only on the poll interval.
+* Add `manageWidgetResource` and `manageWidgetThreads` to
+  `System.Taffybar.Widget.Util`, which scope a widget's acquired resources and
+  worker threads to its realized lifetime, releasing them on unrealize or
+  destroy.
+
+## Fixes
+
+* Fix a segfault in `pollingGraphNew`. The tooltip was set directly from the
+  sampling thread, which races GTK's tooltip bookkeeping in
+  `gtk_widget_queue_tooltip_query` and eventually corrupts the tooltip window
+  list. The update now goes through `postGUIASync` like its sibling widgets.
+  Thanks to Isaac Shapira for the diagnosis and fix.
+* Stop the MPRIS2 player icon from driving a resize feedback loop. The icon
+  used the `ImageResize` path, so a player whose icon lookup fell back
+  repeatedly (e.g. Chromium) re-entered size-allocate on every fallback pixbuf
+  swap, growing the bar and pegging the CPU. It now routes through the
+  strategy-aware `scalingImage`, which renders via a `DrawingArea` and cannot
+  retrigger allocation.
+* Populate backlight state before starting the monitoring thread, so the widget
+  shows a real value immediately instead of waiting for the first sample.
+
+# 7.2.7
+
+## Features
+
+* Add shared channel-backed producers and channel-driven widget variants for
+  CPU load, CPU frequency, memory, sysfs temperature, and NVIDIA telemetry.
+* Add temporary coordinated wakeup subscriptions and let CPU graphs acquire a
+  fast shared sampling cadence while hovered, releasing it when the pointer
+  leaves.
+* Add a configurable CPU-frequency information source and compact widget with
+  average, range, and policy-count reporting.
+* Enrich NVIDIA temperature tooltips with target and memory temperatures,
+  thermal headroom, utilization, VRAM, power, fan, and performance-state
+  readings. Sysfs temperature widgets can now include additional sensors in
+  the tooltip without changing the compact label's aggregation.
+* Add separate ASUS AC and battery power-profile controls and combine their
+  state into one menu.
+* Show the current day of Claude's 7-day usage window in the Anthropic usage
+  widget when the OAuth endpoint reports a reset timestamp.
+* Show the current day of Codex's 7-day usage window as a compact @N/7d@ value in
+  the OpenAI usage widget when the endpoint reports an authoritative reset.
+* Let OpenAI and Anthropic usage stacks render structured window-label parts
+  with caller-supplied functions, so configurations can control ordering and
+  separators without duplicating widget or usage-calculation internals.
+* Allow text battery widgets to display UPower's current energy rate with the
+  @$watts$@ placeholder or as battery input/output with @$signedWatts$@, and
+  refresh the value on UPower sampling updates.
+* Add polling-driven hover expansion and styling refinements to the prioritized
+  StatusNotifier tray.
+
+## Performance
+
+* Slow hardware telemetry defaults, share producers across widgets, align
+  periodic work through the coordinated wakeup scheduler, and suppress
+  unchanged channel updates.
+* Avoid invoking `nvidia-smi` while every detected NVIDIA device is
+  runtime-suspended.
+* Wait for wlsunset process-exit events instead of repeatedly polling process
+  state while it is running.
+
+## Fixes
+
+* Show Codex's temporarily disabled 5-hour usage limit as unlimited while
+  keeping its remaining 7-day window in the weekly row.
+* Tolerate unreadable or concurrently replaced Anthropic transcript and
+  credential files.
+
+## Packaging
+
+* Require `dbus-menu >= 0.1.3.4` for refresh reconciliation that preserves GTK
+  menu items across asynchronous layout updates.
+
+# 7.2.6
+
+## Features
+
+* Add NVIDIA GPU temperature information and a configurable polling widget
+  backed by `nvidia-smi`.
+
+## Fixes
+
+* Require `status-notifier-item >= 0.3.2.16` and `gtk-sni-tray >= 0.2.1.4`,
+  which collapse duplicate Ayatana tray items even when an application uses a
+  freshly generated item identity for every instance.
+
+# 7.2.5
+
+## Features
+
+* Add `System.Taffybar.WidgetPriority`, which supports priority-based dynamic
+  hiding of bar widgets when the bar runs out of horizontal space. Wrapping a
+  widget constructor with `withPriority` (re-exported from
+  `System.Taffybar.SimpleConfig`) marks it as hideable; when the natural
+  widths of the bar's widgets exceed the available width, prioritized widgets
+  are hidden lowest-priority-first and shown again (with a hysteresis margin)
+  when space frees up. Widgets without a priority are never hidden, and bars
+  with no prioritized widgets behave exactly as before. Hidden widgets get the
+  `priority-hidden` CSS class.
+
+* The Anthropic usage widget now reports rate-limit utilization percentages
+  and reset times from the OAuth usage endpoint that Claude Code itself polls,
+  authenticated with the access token from Claude Code's local credentials
+  file. Window labels display clean percentages (matching the OpenAI usage
+  widget) whenever the endpoint is reachable, falling back to the existing
+  transcript-derived token counts otherwise.
+
+## Fixes
+
+* Require `status-notifier-item >= 0.3.2.15` and `gtk-sni-tray >= 0.2.1.3`,
+  which bound the DBus calls made during SNI tray host and watcher startup. A
+  single unresponsive tray item (a process that owns its `StatusNotifierItem`
+  bus name but never services its connection) could previously hang the tray
+  widget build, and with it the entire bar, indefinitely.
+
+# 7.2.4
+
+## Packaging
+
+* Release through the repository's GitHub Actions Hackage workflow, including
+  generated Haddock documentation upload.
+
+# 7.2.3
+
+## Packaging
+
+* Add a `wireplumber` flag, enabled by default, so package sets without
+  WirePlumber 0.5 development libraries can disable the WirePlumber-backed
+  audio modules and still build taffybar.
+
+# 7.2.2
+
+## Packaging
+
+* Allow `QuickCheck-2.16` in the test library and test suite so Stackage
+  Nightly can build taffybar with its current package set.
+
+# 7.2.1
+
+## Fixes
+
+* Mark WirePlumber metadata-changed signal string parameters as nullable in the
+  generated GI bindings, preventing crashes when WirePlumber emits NULL
+  metadata values while clearing defaults.
+
+## Packaging
+
+* Bump the package version to 7.2.1.
+* Require `gi-wireplumber >= 0.5.14.2` for the nullable
+  metadata-changed signal binding.
+
+# 7.2.0
+
+## New Features
+
+* Add the OmniMenu widget and supporting desktop-entry parsing updates.
+* Add WirePlumber-backed audio information and expose it through the audio
+  widget fallback path.
+* Add Hyprland workspace history ordering, pinned-window tracking, special
+  workspace remapping, and external workspace icon refresh support.
+* Use the generated ChromeWindowInfo DBus client.
+
+## Fixes
+
+* Prefer live Hyprland backends over stale X11/Wayland environment state.
+* Improve Hyprland lifecycle recovery, workspace redraws, workspace sorting,
+  and workspace icon activation.
+* Fix HiDPI scaled-image rendering and normalize menu icon sizing.
+* Stabilize SNI tray ordering and prioritized tray hover expansion.
+* Clean up Stan/compiler diagnostics across the monorepo.
+
+## Packaging
+
+* Bump companion-package lower bounds for the refreshed monorepo package
+  releases.
+* Add and depend on `gi-wireplumber >= 0.5.14.1`.
+* Bump the package version to 7.2.0.
+
+# 7.1.0
+
+## New Features
+
+* Add structured OpenAI usage information and an OpenAI usage widget.
+* Add Anthropic usage information and an Anthropic usage widget.
+* Expose the new OpenAI and Anthropic usage information/widget modules from
+  the library.
+
+## Fixes
+
+* Refresh window state after Hyprland reconnects.
+* Fix backend detection by preparing display environment variables before GTK
+  initialization, preferring explicit X11 sessions over stale Wayland sockets,
+  validating live Hyprland sockets, and detecting the backend from the GDK
+  display when possible.
+* Fix X11 strut/window handling by safely checking that realized GTK windows
+  are X11 windows before lowering them.
+* Handle non-X11 GDK windows safely.
+* Stabilize CSS loading for themed end widgets.
+* Apply end-widget pill palettes directly at runtime and use
+  `nth-last-child` selectors for end pill rotation.
+
+## Refactors
+
+* Decouple layout and workspace/window information providers from widget
+  rendering, and move shared workspace/window support helpers out of widget
+  modules.
+* Clean up imports and internal helper code in the Hyprland layout and
+  workspaces modules.
+* Refresh vendored companion-package code in the monorepo, including
+  `dbus-hslogger`, `dbus-menu`, `gtk-sni-tray`, `gtk-strut`,
+  `status-notifier-item`, `xdg-desktop-entry`, and `gtk-scaling-image`.
+
+## Tests
+
+* Add backend-detection coverage for explicit X11 sessions when ambient
+  Wayland sockets are present.
+* Add `network` to the unit-test dependencies for Unix socket test support.
+* Clean up unit-test imports.
+
+## Packaging
+
+* Bump the package version to 7.1.0.
+* Update `flake.lock`.
+
+# 7.0.1
+
+## Tray
+
+* Avoid prioritized-collapsible tray rebuilds for overlay-icon, tooltip, and
+  status-only updates that do not affect visible tray content.
+
+## Packaging
+
+* Require `gtk-sni-tray >= 0.2.1.1` and `status-notifier-item >= 0.3.2.13`
+  so tray consumers pick up the host-side suppression of redundant no-op
+  property update churn.
+
+# 7.0.0
+
+## Breaking Changes
+
+* Remove the deprecated `System.Taffybar.Information.CPU` shim; use
+  `System.Taffybar.Information.CPU2` instead.
+
+## New Features
+
+* Add `System.Taffybar.Widget.CoordinatedClock`, a shared wakeup-backed clock
+  helper for coordinated time-based updates.
+* Add label setup hooks for `MPRIS2` and `Windows` widgets so callers can
+  customize label widgets after construction.
+* Add `.graph-label` styling support for graph overlay labels and make overlay
+  labels pass pointer events through to the underlying graph.
+
+## Tray
+
+* Move prioritized collapsible tray controls into the tray menu and auto-fit
+  tray icons within the available space.
+* Reduce prioritized/collapsible tray churn by deferring visibility until
+  state is ready, preserving item identities, refreshing in place, and dropping
+  stale rebuilds before swapping.
+* Fix tray flicker and async menu regressions, prevent duplicate tray contexts
+  during async initialization, eliminate duplicate startup icons, and avoid
+  routine update churn.
+* Improve `status-notifier-item` reconciliation so logical tray items are
+  deduplicated across bus-name churn, including KDE/Qt multi-connection
+  registrations.
+
+## Fixes
+
+* Switch `System.Taffybar.Information.CPU2.getCPULoadChan` to coordinated
+  wakeups and run CPU widgets on the shared wakeup scheduler.
+* Fix `MPRIS2` updates so widget visibility and CSS class changes happen in the
+  same GTK sync.
+* Watch XMonad visible-workspace updates so EWMH workspace state stays current
+  after visibility changes.
+
+## Packaging
+
+* Build against monorepo-local companion packages and extract shared pixbuf
+  scaling and auto-fill image helpers into the new `gtk-scaling-image`
+  package.
+
+# 6.0.0
+
+## Breaking Changes
+
+* Remove legacy workspace widget implementations.
+
+## Fixes
+
+* Fix workspace filter visibility after bar recreation.
+* Fix window icon cache poisoning on failed lookups.
+
+## Tests
+
+* Refresh appearance golden images.
+
+# 5.2.1
+
+## Fixes
+
+* Guard EWMH window-icon property subscriptions behind X11 context presence to
+  avoid non-X11 build/runtime failures.
+
+## Tests
+
+* Simplify appearance snapshot apps/tests to a single workspaces mode by
+  removing legacy channel-workspaces snapshot wiring and flags.
+
+# 5.2.0
+
+## New Features
+
+* Add optional `barLevels` support to `BarConfig`/`SimpleTaffyConfig` for
+  stacked multi-row bars with per-level `start`/`center`/`end` widget lists.
+* Keep backward compatibility for existing configs: when `barLevels` is
+  `Nothing`, the legacy single-row widget fields are used unchanged.
+* Add `mpris2NewWithControls`, an opt-in MPRIS2 constructor that shows
+  previous/play-pause/next controls gated by player capabilities
+  (`CanGoPrevious`, `CanPlay`, `CanPause`, `CanGoNext`).
+* Add channel-based CPU sampling via
+  `System.Taffybar.Information.CPU2.getCPULoadChan`, and switch CPU widgets to
+  use the channel-backed implementation.
+
+## Deprecations
+
+* Deprecate `System.Taffybar.Information.CPU` and
+  `System.Taffybar.Information.CPU.cpuLoad`.
+* Deprecate non-channel CPU2 polling/parsing entry points:
+  `System.Taffybar.Information.CPU2.getCPUInfo` and
+  `System.Taffybar.Information.CPU2.getCPULoad`.
+
+## Dependency Bumps
+
+ * Bump `gtk-sni-tray` lower bound to 0.1.14.0.
+ * Bump `status-notifier-item` lower bound to 0.3.2.6, pulling in important
+   robustness fixes for the StatusNotifier host/watcher implementations
+   (registration ownership checks, restart deduplication, cache-backed restore,
+   and better reconciliation after watcher restarts).
+
+## Tray
+
+ * Add optional SNI tray priority pass-through via new additive constructors
+   while keeping existing tray constructors backwards compatible.
+ * Add a collapsible SNI tray widget with overflow indicator and expand/collapse
+   interaction.
+ * Add a prioritized collapsible SNI tray variant with:
+   persisted icon priorities, a button-driven priority edit mode, explicit
+   expand/collapse toggle, and priority threshold filtering.
+ * Put prioritized-collapsible tray implementation in its own module:
+   `System.Taffybar.Widget.SNITray.PrioritizedCollapsible`.
+ * Make equal-priority icon ordering stable in the prioritized collapsible tray
+   using deterministic per-item identity tie-breaking.
+ * Improve prioritized collapsible tray UX:
+   separate icon buttons for expand/edit/settings, menu-based priority editing,
+   and menu controls for max-visible and threshold settings.
+ * StatusNotifier host/watcher behavior is now significantly more robust via the
+   `status-notifier-item` update (better restart handling, deduplication, and
+   state reconciliation).
+
+## Tests
+
+ * Add a new X11 appearance golden test for two-level bars
+   (`appearance-ewmh-bar-levels.png`).
+ * Extend Hyprland VM appearance checks to exercise `--levels` rendering and
+   assert multi-row output markers.
+
+# 5.1.3
+
+## Dependency Bumps
+
+ * Bump `dbus-menu` lower bound to 0.1.3.2 for GHC 9.12 compatibility.
+ * Bump `gtk-sni-tray` lower bound to 0.1.14.2 for GHC 9.12 compatibility.
+
+# 5.1.2
+
+## Dependency Bumps
+
+ * Bump `dbus-menu` lower bound to 0.1.3.1.
+ * Bump `gtk-sni-tray` lower bound to 0.1.13.2.
+
+# 5.1.1
+
+## Dependency Bumps
+
+ * Bump `dbus-menu` lower bound to 0.1.3.0 for menu-level click dispatch.
+ * Bump `gtk-sni-tray` lower bound to 0.1.13.1.
+
+# 5.1.0
+
+## New Widgets
+
+ * **ScreenLock** — Screen lock indicator and toggle via DBus.
+ * **Wlsunset** — Wlsunset (blue light filter) status and toggle.
+
+## Dependency Bumps
+
+ * Bump `dbus-menu` lower bound to 0.1.1.0.
+ * Bump `gtk-sni-tray` lower bound to 0.1.13.0.
+
+# 5.0.0
+
+## Wayland Support
+
+ * Add Wayland backend using `gtk-layer-shell`, enabling taffybar to run
+   natively on Wayland compositors.
+ * Add Hyprland integration with event-driven workspaces, windows, and layout
+   widgets via IPC sockets.
+ * Auto-detect backend (X11 vs Wayland) based on environment — requires a
+   Wayland socket for the Wayland backend.
+ * Dynamically update layer-shell exclusive zone on bar resize.
+ * Rebuild Hyprland workspace widgets after bar window recreation (e.g. after
+   `hyprctl reload`).
+ * Refresh Hyprland widgets on event-socket reconnect.
+ * Store Hyprland client on Context for shared access across widgets.
+ * Sort Hyprland workspace icons by window position.
+
+## New Widgets
+
+ * **Bluetooth** — Bluetooth adapter status via DBus.
+ * **DiskUsage** — Disk usage monitoring backed by `disk-free-space`.
+ * **WirePlumber** — PipeWire audio volume/mute via WirePlumber DBus.
+ * **Temperature** — System temperature monitoring with icon and label variants.
+ * **Privacy** — Microphone/screen-share indicator via PipeWire.
+ * **Inhibitor** — Idle/sleep inhibitor toggle via `systemd-inhibit`.
+ * **PowerProfiles** — Power profiles daemon widget (power-saver/balanced/performance).
+ * **KeyboardState** — Caps Lock, Num Lock, Scroll Lock indicator.
+ * **Systemd** — Failed systemd units monitoring.
+ * **BatteryDonut** — Cairo-rendered donut battery gauge with optional label.
+ * **BatteryTextIcon** — Nerd Font glyph battery indicator.
+ * **SNIMenu** — Click-to-open DBus menu for StatusNotifierItem tray icons.
+
+## New Widget Variants
+
+ * Most new widgets ship with icon-only, label-only, and combined icon+label
+   variants using a shared `buildIconLabelBox` utility.
+ * **Backlight** — add icon-only and combined icon+label variants.
+ * **DiskUsage** — add icon-only and combined icon+label variants.
+ * **NetworkManager** — separate icon and text into independent composable widgets.
+ * **PulseAudio** — separate icon and text into independent composable widgets.
+
+## Improvements
+
+ * **PulseAudio**: completely rewritten — event-driven via DBus `ListenForSignal`
+   peer-to-peer updates, replacing the old polling approach. Per-sink info is
+   cached for efficiency.
+ * **NetworkManager**: add unified network info and composable widget set.
+ * **Backlight**: event-driven updates via libudev instead of polling.
+ * Refactor icon widgets to use `ScalingImage` instead of `autoSizeImage`.
+ * Workspaces: share overlay/icon/label widget helpers across X11 and Hyprland.
+ * HyprlandWorkspaces: composable WWC controller pattern, incremental cache,
+   and default workspace filters.
+ * Raise CSS provider priority for more predictable theming.
+ * Runtime-configurable log levels via YAML file.
+ * Relax `scotty` upper bound to `< 0.31`.
+ * Tested with GHC 9.8, 9.10, and 9.12.
+
+## Bug Fixes
+
+ * Fix `autoFillImage` to only expand `DrawingArea` in the cross-axis direction.
+ * Fix MPRIS2 `OverloadedStrings` and add show/hide for outer widget.
+ * Guard `initForWindow` to prevent GTK assertion failure on already-mapped windows.
+ * Use `menuPopupAtPointer` for correct SNIMenu positioning.
+
+## Breaking Changes
+
+ * The PulseAudio widget API has been replaced — old `Audio` widget/info modules
+   are superseded by the new event-driven `PulseAudio` module.
+ * NetworkManager widget API refactored into separate icon and text sub-widgets.
+ * Icon widgets now use `ScalingImage` instead of `autoSizeImage`.
+ * New dependency on `gi-gtk-layer-shell` (for Wayland support).
+ * New dependency on `dbus-menu` (for SNIMenu widget).
+ * Bump `dbus-hslogger` lower bound to `0.1.1.0`.
+ * Bump `gtk-sni-tray` to `0.1.11.2`.
+
+## Documentation
+
+ * Document that the PulseAudio widget requires PulseAudio's DBus protocol
+   to be enabled (load @module-dbus-protocol@), otherwise it may display
+   @vol: n/a@.
+
+# 4.1.1
+
+## Improvements
+
+ * Add [`pollingLabelWithVariableDelayAndRefresh`][pollingLabelWithVariableDelayAndRefresh]. The [`WttrIn`][WttrIn] widget uses this.
+
+[pollingLabelWithVariableDelayAndRefresh]: https://hackage.haskell.org/package/taffybar-4.1.1/docs/System-Taffybar-Widget-Generic-PollingLabel.html#v:pollingLabelWithVariableDelayAndRefresh
+
+[WttrIn]: https://hackage.haskell.org/package/taffybar-4.1.1/docs/System-Taffybar-Widget-WttrIn.html
+
+## Breaking Changes
+
+ * Use version-named package build dependencies. Users building their
+   configurations with Stack or Nix may need to do likewise. That is,
+   change:
+    - `gi-gtk` → `gi-gtk3`
+    - `gi-gdk` → `gi-gdk3`
+    - `gi-gdkx11` → `gi-gdkx113`
+
+ * Taffybar is tested with GHC versions 9.8 and 9.10.
+   Other versions may or may not work.
+
+
 # 4.1.0
 
 ## Breaking Changes
@@ -495,4 +1104,4 @@ The `XMonadLog` module is deprecated.  This module let taffybar display XMonad d
 
  * Readable widget for freedesktop notifications
  * Fixed a few potential deadlocks on startup
- * Use the GTK+ rc-file styling system for colors instead of hard coding them
+ * Use the GTK+ rc-file styling system for colors instead

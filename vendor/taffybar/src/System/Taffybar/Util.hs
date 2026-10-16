@@ -1,6 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 -----------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------
+
 -- |
 -- Module      : System.Taffybar.Util
 -- Copyright   : (c) Ivan A. Malison
@@ -9,141 +13,170 @@
 -- Maintainer  : Ivan A. Malison
 -- Stability   : unstable
 -- Portability : unportable
------------------------------------------------------------------------------
+module System.Taffybar.Util
+  ( -- * Configuration
+    taffyStateDir,
 
-module System.Taffybar.Util (
-  -- * Configuration
-    taffyStateDir
-  -- * GTK concurrency
-  , module Gtk
-  -- * GLib
-  , catchGErrorsAsLeft
-  -- * Logging
-  , logPrintF
-  -- * Text
-  , truncateString
-  , truncateText
-  -- * Resources
-  , downloadURIToPath
-  , getPixbufFromFilePath
-  , safePixbufNewFromFile
-  -- * Logic Combinators
-  , (<||>)
-  , (<|||>)
-  , forkM
-  , ifM
-  , anyM
-  , maybeTCombine
-  , maybeToEither
-  -- * Control
-  , foreverWithVariableDelay
-  , foreverWithDelay
-  -- * Process control
-  , runCommand
-  , onSigINT
-  , maybeHandleSigHUP
-  , handlePosixSignal
-  -- * Resource management
-  , rebracket
-  , rebracket_
-  -- * Deprecated
-  , logPrintFDebug
-  , liftReader
-  , liftActionTaker
-  , (??)
-  , runCommandFromPath
-  ) where
+    -- * GTK concurrency
+    module Gtk,
 
-import           Conduit
-import           Control.Applicative
-import           Control.Arrow ((&&&))
-import           Control.Concurrent (ThreadId, forkIO, threadDelay)
+    -- * GLib
+    catchGErrorsAsLeft,
+
+    -- * Logging
+    logPrintF,
+
+    -- * Text
+    truncateString,
+    truncateText,
+
+    -- * Resources
+    downloadURIToPath,
+    getPixbufFromFilePath,
+    safePixbufNewFromFile,
+
+    -- * Logic Combinators
+    (<||>),
+    (<|||>),
+    forkM,
+    ifM,
+    anyM,
+    maybeTCombine,
+    maybeToEither,
+
+    -- * Control
+    VariableDelayConfig (..),
+    defaultVariableDelayConfig,
+    foreverWithVariableDelayWithConfig,
+    foreverWithVariableDelay,
+    foreverWithDelay,
+
+    -- * Process control
+    runCommand,
+    onSigINT,
+    maybeHandleSigHUP,
+    handlePosixSignal,
+
+    -- * Resource management
+    rebracket,
+    rebracket_,
+
+    -- * Deprecated
+    logPrintFDebug,
+    liftReader,
+    liftActionTaker,
+    (??),
+    runCommandFromPath,
+  )
+where
+
+import Conduit
+import Control.Applicative
+import Control.Arrow ((&&&))
+import Control.Concurrent (ThreadId, forkIO, threadDelay)
 import qualified Control.Concurrent.MVar as MV
-import           Control.Exception.Base
-import           Control.Monad
-import           Control.Monad.Trans.Maybe
-import           Control.Monad.Trans.Reader
-import           Data.Either.Combinators
-import           Data.GI.Base.GError
-import           Control.Exception.Enclosed (catchAny)
-import           Data.GI.Gtk.Threading as Gtk (postGUIASync, postGUISync)
-import           Data.GI.Gtk.Threading (postGUIASyncWithPriority)
-import           Data.Maybe
-import           Data.IORef (newIORef, readIORef, writeIORef)
+import Control.Exception.Base
+import Control.Exception.Enclosed (catchAny)
+import Control.Monad
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Reader
+import Data.Either.Combinators
+import Data.GI.Base.GError
+import Data.GI.Gtk.Threading (postGUIASyncWithPriority)
+import Data.GI.Gtk.Threading as Gtk (postGUIASync, postGUISync)
+import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.Maybe
 import qualified Data.Text as T
-import           Data.Tuple.Sequence
-import qualified GI.GdkPixbuf.Objects.Pixbuf as Gdk
+import qualified Data.Time.Clock as Clock
+import Data.Tuple.Sequence
 import qualified GI.GLib.Constants as G
-import           Network.HTTP.Simple
-import           System.Directory
-import           System.Environment.XDG.BaseDir
-import           System.Exit (ExitCode (..), exitWith)
-import           System.FilePath.Posix
-import           System.IO (hIsTerminalDevice, stdout, stderr)
-import           System.Log.Logger
-import           System.Posix.Signals (Signal, Handler(..), installHandler, sigHUP, sigINT)
+import qualified GI.GdkPixbuf.Objects.Pixbuf as Gdk
+import Network.HTTP.Simple
+import System.Directory
+import System.Environment.XDG.BaseDir
+import System.Exit (ExitCode (..), exitWith)
+import System.FilePath.Posix
+import System.IO (hIsTerminalDevice, stderr, stdout)
+import System.Log.Logger
+import System.Posix.Signals (Handler (..), Signal, installHandler, sigHUP, sigINT)
 import qualified System.Process as P
-import           Text.Printf
+import Text.Printf
 
-
+-- | Per-user state directory for taffybar runtime/cache data.
 taffyStateDir :: IO FilePath
 taffyStateDir = getUserDataDir "taffybar"
 
 {-# DEPRECATED liftReader "Use Control.Monad.Trans.Reader.mapReaderT instead" #-}
-liftReader :: Monad m => (m1 a -> m b) -> ReaderT r m1 a -> ReaderT r m b
+
+-- | Deprecated alias for 'mapReaderT'.
+liftReader :: (Monad m) => (m1 a -> m b) -> ReaderT r m1 a -> ReaderT r m b
 liftReader = mapReaderT
 
-logPrintF
-  :: (MonadIO m, Show t)
-  => String -> Priority -> String -> t -> m ()
+-- | Log a formatted value using 'printf' into a specific logger path.
+logPrintF ::
+  (MonadIO m, Show t) =>
+  String -> Priority -> String -> t -> m ()
 logPrintF logPath priority format toPrint =
   liftIO $ logM logPath priority $ printf format $ show toPrint
 
 {-# DEPRECATED logPrintFDebug "Use logPrintF instead" #-}
+
+-- | Deprecated debug-level convenience wrapper around 'logPrintF'.
 logPrintFDebug :: (MonadIO m, Show t) => String -> String -> t -> m ()
 logPrintFDebug path = logPrintF path DEBUG
 
 infixl 4 ??
-(??) :: Functor f => f (a -> b) -> a -> f b
+
+-- | Apply a pure argument to a functor-wrapped function.
+(??) :: (Functor f) => f (a -> b) -> a -> f b
 fab ?? a = fmap ($ a) fab
 {-# INLINE (??) #-}
 {-# DEPRECATED (??) "Use @f <*> pure a@ instead" #-}
 
-ifM :: Monad m => m Bool -> m a -> m a -> m a
+-- | Monadic conditional.
+ifM :: (Monad m) => m Bool -> m a -> m a -> m a
 ifM cond whenTrue whenFalse =
   cond >>= (\bool -> if bool then whenTrue else whenFalse)
 
-forkM :: Monad m => (c -> m a) -> (c -> m b) -> c -> m (a, b)
+-- | Evaluate two monadic computations from the same input and return both
+-- results.
+forkM :: (Monad m) => (c -> m a) -> (c -> m b) -> c -> m (a, b)
 forkM a b = sequenceT . (a &&& b)
 
+-- | Convert a 'Maybe' into an 'Either' with a provided left value.
 maybeToEither :: b -> Maybe a -> Either b a
 maybeToEither = flip maybe Right . Left
 
+-- | Truncate a string to at most @n@ characters, appending an ellipsis when
+-- truncation occurs.
 truncateString :: Int -> String -> String
 truncateString n incoming
   | length incoming <= n = incoming
   | otherwise = take n incoming ++ "…"
 
+-- | Text variant of 'truncateString'.
 truncateText :: Int -> T.Text -> T.Text
 truncateText n incoming
-  | T.length incoming <= n = incoming
+  | T.compareLength incoming n /= GT = incoming
   | otherwise = T.append (T.take n incoming) "…"
 
 -- | Run the provided command with the provided arguments.
 --
 -- If the command filename does not contain a slash, then the @PATH@
 -- environment variable is searched for the executable.
-runCommand :: MonadIO m => FilePath -> [String] -> m (Either String String)
+runCommand :: (MonadIO m) => FilePath -> [String] -> m (Either String String)
 runCommand cmd args = liftIO $ do
   (ecode, out, err) <- P.readProcessWithExitCode cmd args ""
   logM "System.Taffybar.Util" INFO $
-       printf "Running command %s with args %s" (show cmd) (show args)
+    printf "Running command %s with args %s" (show cmd) (show args)
   return $ case ecode of
     ExitSuccess -> Right out
     ExitFailure exitCode -> Left $ printf "Exit code %s: %s " (show exitCode) err
 
 {-# DEPRECATED runCommandFromPath "Use runCommand instead" #-}
-runCommandFromPath :: MonadIO m => FilePath -> [String] -> m (Either String String)
+
+-- | Deprecated alias for 'runCommand'.
+runCommandFromPath :: (MonadIO m) => FilePath -> [String] -> m (Either String String)
 runCommandFromPath = runCommand
 
 -- | A variant of 'bracket' which allows for reloading.
@@ -178,61 +211,116 @@ rebracket alloc action = bracket setup teardown (action . reload)
 -- automatically allocate the resource before running the enclosed
 -- action.
 rebracket_ :: IO (IO ()) -> (IO () -> IO a) -> IO a
-rebracket_ alloc action = rebracket ((, ()) <$> alloc) $
+rebracket_ alloc action = rebracket ((,()) <$> alloc) $
   \reload -> reload >> action reload
 
 -- | Execute the provided IO action at the provided interval.
 foreverWithDelay :: (MonadIO m, RealFrac d) => d -> IO () -> m ThreadId
 foreverWithDelay delay action =
   foreverWithVariableDelay $ safeAction >> return delay
-  where safeAction =
-          catchAny action $ \e ->
-            logPrintF "System.Taffybar.Util" WARNING "Error in foreverWithDelay %s" e
+  where
+    safeAction =
+      catchAny action $ \e ->
+        logPrintF "System.Taffybar.Util" WARNING "Error in foreverWithDelay %s" e
+{-# DEPRECATED foreverWithDelay "Use System.Taffybar.Information.Wakeup.taffyForeverWithDelay for context-aware synchronized wakeups" #-}
 
 -- | Execute the provided IO action, and use the value it returns to decide how
 -- long to wait until executing it again. The value returned by the action is
 -- interpreted as a number of seconds.
-foreverWithVariableDelay :: (MonadIO m, RealFrac d) => IO d -> m ThreadId
-foreverWithVariableDelay action = liftIO $ forkIO $ action >>= delayThenAction
-  where delayThenAction delay =
-          threadDelay (floor $ delay * 1000000) >> action >>= delayThenAction
+newtype VariableDelayConfig d = VariableDelayConfig
+  { -- | Maximum sleep chunk used while waiting between polls.
+    --
+    -- If 'Nothing', waits use a single 'threadDelay' for the entire delay.
+    -- If present, waits are chunked using wall-clock time, which helps polling
+    -- loops recover promptly after suspend/resume.
+    variableDelayMaxWaitChunk :: Maybe d
+  }
+  deriving (Eq, Ord, Show)
 
-liftActionTaker
-  :: (Monad m)
-  => ((a -> m a) -> m b) -> (a -> ReaderT c m a) -> ReaderT c m b
+defaultVariableDelayConfig :: VariableDelayConfig d
+defaultVariableDelayConfig =
+  VariableDelayConfig
+    { variableDelayMaxWaitChunk = Nothing
+    }
+
+foreverWithVariableDelay :: (MonadIO m, RealFrac d) => IO d -> m ThreadId
+foreverWithVariableDelay = foreverWithVariableDelayWithConfig defaultVariableDelayConfig
+
+foreverWithVariableDelayWithConfig ::
+  (MonadIO m, RealFrac d) => VariableDelayConfig d -> IO d -> m ThreadId
+foreverWithVariableDelayWithConfig config action = liftIO $ forkIO $ action >>= delayThenAction
+  where
+    delayThenAction delay = do
+      waitDelay delay
+      action >>= delayThenAction
+
+    waitDelay delay
+      | delay <= 0 = pure ()
+      | otherwise =
+          case variableDelayMaxWaitChunk config of
+            Just waitChunk | waitChunk > 0 -> do
+              start <- Clock.getCurrentTime
+              let waitChunkMicros =
+                    max 1 $
+                      floor
+                        (realToFrac waitChunk * 1000000 :: Double)
+              waitUntil waitChunkMicros $ Clock.addUTCTime (realToFrac delay) start
+            _ -> threadDelay (floor $ delay * 1000000)
+
+    waitUntil waitChunkMicros target = do
+      now <- Clock.getCurrentTime
+      let remainingMicros =
+            floor
+              (realToFrac (Clock.diffUTCTime target now) * 1000000 :: Double)
+          sleepMicros = min waitChunkMicros remainingMicros
+      when (sleepMicros > 0) $ threadDelay sleepMicros >> waitUntil waitChunkMicros target
+
+-- | Lift an action-taker combinator into a 'ReaderT' context.
+liftActionTaker ::
+  (Monad m) =>
+  ((a -> m a) -> m b) -> (a -> ReaderT c m a) -> ReaderT c m b
 liftActionTaker actionTaker action = do
   ctx <- ask
   lift $ actionTaker $ flip runReaderT ctx . action
 
-maybeTCombine
-  :: Monad m
-  => m (Maybe a) -> m (Maybe a) -> m (Maybe a)
+-- | Combine two @Maybe@-producing actions, preferring the first successful one.
+maybeTCombine ::
+  (Monad m) =>
+  m (Maybe a) -> m (Maybe a) -> m (Maybe a)
 maybeTCombine a b = runMaybeT $ MaybeT a <|> MaybeT b
 
 infixl 3 <||>
+
+-- | Pointwise 'maybeTCombine' for unary functions.
 (<||>) ::
-  Monad m =>
+  (Monad m) =>
   (t -> m (Maybe a)) -> (t -> m (Maybe a)) -> t -> m (Maybe a)
 a <||> b = combineOptions
-  where combineOptions v = maybeTCombine (a v) (b v)
+  where
+    combineOptions v = maybeTCombine (a v) (b v)
 
 infixl 3 <|||>
-(<|||>)
-  :: Monad m
-  => (t -> t1 -> m (Maybe a))
-  -> (t -> t1 -> m (Maybe a))
-  -> t
-  -> t1
-  -> m (Maybe a)
-a <|||> b = combineOptions
-  where combineOptions v v1 = maybeTCombine (a v v1) (b v v1)
 
+-- | Pointwise 'maybeTCombine' for binary functions.
+(<|||>) ::
+  (Monad m) =>
+  (t -> t1 -> m (Maybe a)) ->
+  (t -> t1 -> m (Maybe a)) ->
+  t ->
+  t1 ->
+  m (Maybe a)
+a <|||> b = combineOptions
+  where
+    combineOptions v v1 = maybeTCombine (a v v1) (b v v1)
+
+-- | Catch GLib errors as 'Left', otherwise return 'Right'.
 catchGErrorsAsLeft :: IO a -> IO (Either GError a)
 catchGErrorsAsLeft action = catch (Right <$> action) (return . Left)
 
 catchGErrorsAsNothing :: IO a -> IO (Maybe a)
 catchGErrorsAsNothing = fmap rightToMaybe . catchGErrorsAsLeft
 
+-- | Safely load a pixbuf from file, returning 'Nothing' on GDK errors.
 safePixbufNewFromFile :: FilePath -> IO (Maybe Gdk.Pixbuf)
 safePixbufNewFromFile =
   handleResult . catchGErrorsAsNothing . Gdk.pixbufNewFromFile
@@ -243,27 +331,31 @@ safePixbufNewFromFile =
     handleResult = id
 #endif
 
+-- | Load a pixbuf from file and emit a warning log on failure.
 getPixbufFromFilePath :: FilePath -> IO (Maybe Gdk.Pixbuf)
 getPixbufFromFilePath filepath = do
   result <- safePixbufNewFromFile filepath
   when (isNothing result) $
-       logM "System.Taffybar.WindowIcon" WARNING $
-            printf "Failed to load icon from filepath %s" filepath
+    logM "System.Taffybar.WindowIcon" WARNING $
+      printf "Failed to load icon from filepath %s" filepath
   return result
 
+-- | Download a URI response body directly to a local file path.
 downloadURIToPath :: Request -> FilePath -> IO ()
 downloadURIToPath uri filepath =
-  createDirectoryIfMissing True directory >>
-  runConduitRes (httpSource uri getResponseBody .| sinkFile filepath)
-  where (directory, _) = splitFileName filepath
+  createDirectoryIfMissing True directory
+    >> runConduitRes (httpSource uri getResponseBody .| sinkFile filepath)
+  where
+    (directory, _) = splitFileName filepath
 
+-- | Monadic 'any'.
 anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
 anyM _ [] = return False
-anyM p (x:xs) = do
+anyM p (x : xs) = do
   q <- p x
   if q
-  then return True
-  else anyM p xs
+    then return True
+    else anyM p xs
 
 -- | Installs a useful posix signal handler for 'sigINT' (i.e. Ctrl-C)
 -- for cases when the 'Control.Exception.UserInterrupt' exception gets
@@ -276,10 +368,12 @@ anyM p (x:xs) = do
 --
 -- If the signal handler was invoked, the program will exit with
 -- status 130 after the main loop action returns.
-onSigINT
-  :: IO a -- ^ The main loop 'IO' action
-  -> IO () -- ^ Callback for @SIGINT@
-  -> IO a
+onSigINT ::
+  -- | The main loop 'IO' action
+  IO a ->
+  -- | Callback for @SIGINT@
+  IO () ->
+  IO a
 onSigINT action callback = do
   exitStatus <- newIORef Nothing
 
@@ -301,7 +395,8 @@ onSigINT action callback = do
 -- program, which is the correct thing to do.
 maybeHandleSigHUP :: IO () -> IO a -> IO a
 maybeHandleSigHUP callback action =
-  ifM (anyM hIsTerminalDevice [stdout, stderr])
+  ifM
+    (anyM hIsTerminalDevice [stdout, stderr])
     action
     (handlePosixSignal sigHUP callback action)
 

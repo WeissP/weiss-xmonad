@@ -1,9 +1,13 @@
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+
 -----------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------
+
 -- |
 -- Module      : System.Taffybar.Widget.Crypto
 -- Copyright   : (c) Ivan A. Malison
@@ -15,35 +19,34 @@
 --
 -- This module provides widgets for tracking the price of crypto currency
 -- assets.
------------------------------------------------------------------------------
 module System.Taffybar.Widget.Crypto where
 
-import           Control.Concurrent
-import           Control.Monad
-import           Control.Monad.IO.Class
-import           Control.Monad.Trans.Class
-import           Control.Monad.Trans.Maybe
-import           Control.Monad.Trans.Reader
-import           Data.Aeson
-import           Data.Aeson.Types
+import Control.Concurrent
+import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Reader
+import Data.Aeson
 import qualified Data.Aeson.Key as Key
+import Data.Aeson.Types
 import qualified Data.ByteString.Lazy as LBS
-import           Data.List.Split
-import           Data.Maybe
-import           Data.Proxy
+import Data.Maybe
+import Data.Proxy
 import qualified Data.Text
-import           GHC.TypeLits
+import GHC.TypeLits
 import qualified GI.GdkPixbuf.Objects.Pixbuf as Gdk
 import qualified GI.Gtk as Gtk
-import           Network.HTTP.Simple hiding (Proxy)
-import           System.FilePath.Posix
-import           System.Taffybar.Context
-import           System.Taffybar.Information.Crypto hiding (symbol)
-import           System.Taffybar.Util
-import           System.Taffybar.Widget.Generic.AutoSizeImage
-import           System.Taffybar.Widget.Generic.ChannelWidget
-import           System.Taffybar.WindowIcon
-import           Text.Printf
+import Network.HTTP.Simple hiding (Proxy)
+import System.FilePath.Posix
+import System.Taffybar.Context
+import System.Taffybar.Information.Crypto hiding (symbol)
+import System.Taffybar.Util
+import System.Taffybar.Widget.Generic.ChannelWidget
+import System.Taffybar.Widget.Generic.ScalingImage (scalingImage)
+import System.Taffybar.Widget.Util (buildIconLabelBox, widgetSetClassGI)
+import System.Taffybar.WindowIcon
+import Text.Printf
 
 -- | Extends 'cryptoPriceLabel' with an icon corresponding to the symbol of the
 -- purchase crypto that will appear to the left of the price label. See the
@@ -54,26 +57,25 @@ import           Text.Printf
 -- symbol of the relevant token and the underlying currency in which its price
 -- should be expressed. See the docstring of 'cryptoPriceLabel' for details
 -- about the exact format that this string should take.
-cryptoPriceLabelWithIcon :: forall a. KnownSymbol a => TaffyIO Gtk.Widget
+cryptoPriceLabelWithIcon :: forall a. (KnownSymbol a) => TaffyIO Gtk.Widget
 cryptoPriceLabelWithIcon = do
   label <- cryptoPriceLabel @a
   let symbolPair = symbolVal (Proxy :: Proxy a)
-      symbol = head $ splitOn "-" symbolPair
-  hbox <- Gtk.boxNew Gtk.OrientationHorizontal 0
+      symbol = takeWhile (/= '-') symbolPair
 
   ctx <- ask
-  let refresh =
-        const $ flip runReaderT ctx $
-        fromMaybe <$> pixBufFromColor 10 0 <*> getCryptoPixbuf symbol
-  image <- autoSizeImageNew refresh Gtk.OrientationHorizontal
+  let refresh size =
+        Just
+          <$> runReaderT
+            (fromMaybe <$> pixBufFromColor size 0 <*> getCryptoPixbuf symbol)
+            ctx
+  (image, _) <- scalingImage refresh Gtk.OrientationHorizontal
+  _ <- widgetSetClassGI image "crypto-price-icon"
+  _ <- widgetSetClassGI label "crypto-price-label"
+  buildIconLabelBox image label
+    >>= (`widgetSetClassGI` "crypto-price")
 
-  Gtk.containerAdd hbox image
-  Gtk.containerAdd hbox label
-
-  Gtk.widgetShowAll hbox
-
-  Gtk.toWidget hbox
-
+-- | Stored CoinMarketCap API key used for on-demand icon fetches.
 newtype CMCAPIKey = CMCAPIKey String
 
 -- | Set the coinmarketcap.com api key that will be used for retrieving crypto
@@ -93,22 +95,30 @@ setCMCAPIKey key =
 -- associated with the asset that you want to track as follows:
 --
 -- > cryptoPriceLabel @"BTC-USD"
-cryptoPriceLabel :: forall a. KnownSymbol a => TaffyIO Gtk.Widget
+cryptoPriceLabel :: forall a. (KnownSymbol a) => TaffyIO Gtk.Widget
 cryptoPriceLabel = getCryptoPriceChannel @a >>= cryptoPriceLabel'
 
+-- | Build a crypto price label from an existing price channel.
 cryptoPriceLabel' :: CryptoPriceChannel a -> TaffyIO Gtk.Widget
 cryptoPriceLabel' (CryptoPriceChannel (chan, var)) = do
   label <- Gtk.labelNew Nothing
-  let updateWidget CryptoPriceInfo { lastPrice = cryptoPrice } =
-        postGUIASync $ Gtk.labelSetMarkup label $
-                     Data.Text.pack $ show cryptoPrice
-  void $ Gtk.onWidgetRealize label $
-       readMVar var >>= updateWidget
-  Gtk.toWidget =<< channelWidgetNew label chan updateWidget
+  _ <- widgetSetClassGI label "crypto-price-label"
+  let updateWidget CryptoPriceInfo {lastPrice = cryptoPrice} =
+        postGUIASync $
+          Gtk.labelSetMarkup label $
+            Data.Text.pack $
+              show cryptoPrice
+  void $
+    Gtk.onWidgetRealize label $
+      readMVar var >>= updateWidget
+  (Gtk.toWidget =<< channelWidgetNew label chan updateWidget)
+    >>= (`widgetSetClassGI` "crypto-price-label")
 
+-- | Directory used to cache downloaded crypto icons.
 cryptoIconsDir :: IO FilePath
 cryptoIconsDir = (</> "crypto_icons") <$> taffyStateDir
 
+-- | Cache path for a specific crypto symbol icon.
 pathForCryptoSymbol :: String -> IO FilePath
 pathForCryptoSymbol symbol =
   (</> printf "%s.png" symbol) <$> cryptoIconsDir
@@ -121,16 +131,20 @@ pathForCryptoSymbol symbol =
 getCryptoPixbuf :: String -> TaffyIO (Maybe Gdk.Pixbuf)
 getCryptoPixbuf = getCryptoIconFromCache <||> getCryptoIconFromCMC
 
-getCryptoIconFromCache :: MonadIO m => String -> m (Maybe Gdk.Pixbuf)
-getCryptoIconFromCache symbol = liftIO $
-  pathForCryptoSymbol symbol >>= safePixbufNewFromFile
+-- | Try to load a cached icon for a symbol from disk.
+getCryptoIconFromCache :: (MonadIO m) => String -> m (Maybe Gdk.Pixbuf)
+getCryptoIconFromCache symbol =
+  liftIO $
+    pathForCryptoSymbol symbol >>= safePixbufNewFromFile
 
+-- | Try to fetch an icon via CoinMarketCap using the configured API key.
 getCryptoIconFromCMC :: String -> TaffyIO (Maybe Gdk.Pixbuf)
 getCryptoIconFromCMC symbol =
   runMaybeT $ do
     CMCAPIKey cmcAPIKey <- MaybeT getState
     MaybeT $ lift $ getCryptoIconFromCMC' cmcAPIKey symbol
 
+-- | Fetch a symbol icon from CoinMarketCap metadata and cache it to disk.
 getCryptoIconFromCMC' :: String -> String -> IO (Maybe Gdk.Pixbuf)
 getCryptoIconFromCMC' cmcAPIKey symbol = do
   jsonText <- getCryptoMeta cmcAPIKey symbol
@@ -139,7 +153,9 @@ getCryptoIconFromCMC' cmcAPIKey symbol = do
   maybe (return ()) (`downloadURIToPath` path) uri
   safePixbufNewFromFile path
 
+-- | Extract the logo URI for a symbol from CoinMarketCap metadata JSON.
 getIconURIFromJSON :: String -> LBS.ByteString -> Maybe Data.Text.Text
 getIconURIFromJSON symbol jsonText =
-  decode jsonText >>= parseMaybe
-           ((.: "data") >=> (.: Key.fromString symbol) >=> (.: "logo"))
+  decode jsonText
+    >>= parseMaybe
+      ((.: "data") >=> (.: Key.fromString symbol) >=> (.: "logo"))

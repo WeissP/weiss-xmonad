@@ -1,0 +1,410 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+-----------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------
+
+-- |
+-- Module      : System.Taffybar.Information.ASUS
+-- Copyright   : (c) Ivan A. Malison
+-- License     : BSD3-style (see LICENSE)
+--
+-- Maintainer  : Ivan A. Malison
+-- Stability   : unstable
+-- Portability : unportable
+--
+-- This module provides information about the current ASUS platform profile
+-- and CPU state using the asusd DBus API (xyz.ljones.Asusd) and sysfs.
+module System.Taffybar.Information.ASUS
+  ( ASUSPlatformProfile (..),
+    ASUSInfo (..),
+    getASUSInfo,
+    getASUSInfoFromClient,
+    getASUSInfoChan,
+    getASUSInfoState,
+    cycleASUSProfile,
+    setASUSProfile,
+    setASUSACProfile,
+    setASUSBatteryProfile,
+    asusProfileToString,
+    asusProfileFromUInt,
+    asusProfileToUInt,
+  )
+where
+
+import Control.Concurrent.MVar
+import Control.Concurrent.STM.TChan
+import Control.Exception (SomeException, try)
+import Control.Monad (forM, forever, void, when)
+import Control.Monad.IO.Class
+import Control.Monad.STM (atomically)
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
+import DBus
+import DBus.Client
+import DBus.Internal.Types (Serial (..))
+import qualified DBus.TH as DBus
+import qualified Data.ByteString.Char8 as BS8
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
+import Data.Text (Text)
+import Data.Word (Word32)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.FilePath ((</>))
+import System.Log.Logger
+import System.Taffybar.Context
+import System.Taffybar.Information.CPUFrequency
+  ( cpuFrequencyAverageGHz,
+    readCPUFrequencyInfo,
+  )
+import System.Taffybar.Information.Wakeup (getWakeupChannelForDelay)
+import System.Taffybar.Util (logPrintF, maybeToEither)
+import Text.Read (readMaybe)
+
+-- | ASUS platform profile modes.
+data ASUSPlatformProfile = Quiet | Performance | Balanced
+  deriving (Eq, Show, Ord, Enum, Bounded)
+
+-- | Combined ASUS platform info with CPU state.
+data ASUSInfo = ASUSInfo
+  { asusProfile :: ASUSPlatformProfile,
+    -- | Profile selected automatically while connected to AC power
+    asusACProfile :: ASUSPlatformProfile,
+    -- | Profile selected automatically while running on battery power
+    asusBatteryProfile :: ASUSPlatformProfile,
+    -- | Whether the machine is currently connected to AC power
+    asusOnACPower :: Bool,
+    -- | Average CPU frequency across all cores
+    asusCpuFreqGHz :: Double,
+    -- | CPU package temperature in Celsius
+    asusCpuTempC :: Double
+  }
+  deriving (Eq, Show)
+
+-- DBus constants
+
+asusBusName :: BusName
+asusBusName = "xyz.ljones.Asusd"
+
+asusObjectPath :: ObjectPath
+asusObjectPath = "/xyz/ljones"
+
+asusInterfaceName :: InterfaceName
+asusInterfaceName = "xyz.ljones.Platform"
+
+asusLogPath :: String
+asusLogPath = "System.Taffybar.Information.ASUS"
+
+asusLogF :: (MonadIO m, Show t) => Priority -> String -> t -> m ()
+asusLogF = logPrintF asusLogPath
+
+defaultASUSPollIntervalSeconds :: Double
+defaultASUSPollIntervalSeconds = 10
+
+readAsciiFileStrict :: FilePath -> IO String
+readAsciiFileStrict = fmap BS8.unpack . BS8.readFile
+
+-- | Convert profile enum to string.
+asusProfileToString :: ASUSPlatformProfile -> Text
+asusProfileToString Quiet = "Quiet"
+asusProfileToString Balanced = "Balanced"
+asusProfileToString Performance = "Performance"
+
+-- | Parse profile from asusd uint32: 0=Balanced, 1=Performance, 2=Quiet.
+asusProfileFromUInt :: Word32 -> Maybe ASUSPlatformProfile
+asusProfileFromUInt 0 = Just Balanced
+asusProfileFromUInt 1 = Just Performance
+asusProfileFromUInt 2 = Just Quiet
+asusProfileFromUInt _ = Nothing
+
+asusProfileToUInt :: ASUSPlatformProfile -> Word32
+asusProfileToUInt Balanced = 0
+asusProfileToUInt Performance = 1
+asusProfileToUInt Quiet = 2
+
+-- | Default info when asusd is unavailable.
+unknownASUSInfo :: ASUSInfo
+unknownASUSInfo =
+  ASUSInfo
+    { asusProfile = Balanced,
+      asusACProfile = Performance,
+      asusBatteryProfile = Balanced,
+      asusOnACPower = False,
+      asusCpuFreqGHz = 0,
+      asusCpuTempC = 0
+    }
+
+-- XXX: Remove this once it is exposed in haskell-dbus
+dummyMethodError :: MethodError
+dummyMethodError = methodError (Serial 1) $ errorName_ "org.ClientTypeMismatch"
+
+readDictMaybe :: (IsVariant a) => Map Text Variant -> Text -> Maybe a
+readDictMaybe dict key = M.lookup key dict >>= fromVariant
+
+getProperties ::
+  Client ->
+  IO (Either MethodError (Map Text Variant))
+getProperties client = runExceptT $ do
+  reply <-
+    ExceptT $
+      getAllProperties client $
+        (methodCall asusObjectPath asusInterfaceName "FakeMethod")
+          { methodCallDestination = Just asusBusName
+          }
+  ExceptT $
+    return $
+      maybeToEither dummyMethodError $
+        listToMaybe (methodReturnBody reply) >>= fromVariant
+
+-- | Read the live, AC, and battery platform profiles from DBus.
+readProfilesFromClient ::
+  Client ->
+  IO (ASUSPlatformProfile, ASUSPlatformProfile, ASUSPlatformProfile)
+readProfilesFromClient client = do
+  propsResult <- getProperties client
+  case propsResult of
+    Left err -> do
+      asusLogF WARNING "Failed to read ASUS properties: %s" err
+      return (Balanced, Performance, Balanced)
+    Right props -> do
+      let readProfile key fallback =
+            fromMaybe fallback $
+              (readDictMaybe props key :: Maybe Word32) >>= asusProfileFromUInt
+      return
+        ( readProfile "PlatformProfile" Balanced,
+          readProfile "PlatformProfileOnAc" Performance,
+          readProfile "PlatformProfileOnBattery" Balanced
+        )
+
+-- | Set one of the ASUS platform profile properties.
+setASUSProfileProperty ::
+  Client -> MemberName -> ASUSPlatformProfile -> IO (Either MethodError ())
+setASUSProfileProperty client propertyMember profile = do
+  result <-
+    setProperty
+      client
+      (methodCall asusObjectPath asusInterfaceName propertyMember)
+        { methodCallDestination = Just asusBusName
+        }
+      (toVariant (asusProfileToUInt profile))
+  return $ case result of
+    Left err -> Left err
+    Right _ -> Right ()
+
+-- | Set the ASUS platform profile via DBus property.
+setASUSProfile :: Client -> ASUSPlatformProfile -> IO (Either MethodError ())
+setASUSProfile client = setASUSProfileProperty client "PlatformProfile"
+
+-- | Set the profile that asusd applies while connected to AC power.
+setASUSACProfile :: Client -> ASUSPlatformProfile -> IO (Either MethodError ())
+setASUSACProfile client = setASUSProfileProperty client "PlatformProfileOnAc"
+
+-- | Set the profile that asusd applies while running on battery power.
+setASUSBatteryProfile :: Client -> ASUSPlatformProfile -> IO (Either MethodError ())
+setASUSBatteryProfile client =
+  setASUSProfileProperty client "PlatformProfileOnBattery"
+
+-- | Cycle to the next profile by calling the NextPlatformProfile method.
+cycleASUSProfile :: Client -> IO (Either MethodError ())
+cycleASUSProfile client = do
+  let mc =
+        (methodCall asusObjectPath asusInterfaceName "NextPlatformProfile")
+          { methodCallDestination = Just asusBusName
+          }
+  result <- call client mc
+  return $ case result of
+    Left err -> Left err
+    Right _ -> Right ()
+
+-- | Check whether any mains power supply is currently online.
+readOnACPower :: IO Bool
+readOnACPower = do
+  let powerSupplyDir = "/sys/class/power_supply"
+  exists <- doesDirectoryExist powerSupplyDir
+  if not exists
+    then return False
+    else do
+      entries <- listDirectory powerSupplyDir
+      statuses <- forM entries $ \entry -> do
+        let supplyDir = powerSupplyDir </> entry
+        supplyType <- readPowerSupplyFile $ supplyDir </> "type"
+        online <- readPowerSupplyFile $ supplyDir </> "online"
+        return $ supplyType == Just "Mains" && online == Just "1"
+      return $ or statuses
+  where
+    readPowerSupplyFile path = do
+      exists' <- doesFileExist path
+      if not exists'
+        then return Nothing
+        else do
+          result <- try $ readAsciiFileStrict path :: IO (Either SomeException String)
+          return $ either (const Nothing) (Just . strip) result
+    strip = reverse . dropWhile (`elem` [' ', '\n', '\r', '\t']) . reverse
+
+-- sysfs CPU temperature reading
+
+-- | Read CPU package temperature in Celsius from sysfs.
+-- Prefers x86_pkg_temp zone, falls back to highest temperature.
+readCpuTempC :: IO Double
+readCpuTempC = do
+  let thermalDir = "/sys/class/thermal"
+  exists <- doesDirectoryExist thermalDir
+  if not exists
+    then return 0
+    else do
+      entries <- listDirectory thermalDir
+      let zones = filter (\e -> take 12 e == "thermal_zone") entries
+      readings <- forM zones $ \zone -> do
+        let typePath = thermalDir </> zone </> "type"
+            tempPath = thermalDir </> zone </> "temp"
+        zoneType <- readFileSafe typePath
+        tempVal <- readTempFile tempPath
+        return $ case tempVal of
+          Nothing -> Nothing
+          Just t -> Just (fromMaybe zone zoneType, t)
+      let validReadings = catMaybes readings
+          pkgTemp = lookup "x86_pkg_temp" validReadings
+      case pkgTemp of
+        Just t -> return t
+        Nothing ->
+          if null validReadings
+            then return 0
+            else return $ maximum $ map snd validReadings
+  where
+    readFileSafe path = do
+      exists' <- doesFileExist path
+      if not exists'
+        then return Nothing
+        else do
+          result <- try $ readAsciiFileStrict path :: IO (Either SomeException String)
+          case result of
+            Left _ -> return Nothing
+            Right s -> return $ Just $ strip s
+    readTempFile path = do
+      exists' <- doesFileExist path
+      if not exists'
+        then return Nothing
+        else do
+          result <- try $ readAsciiFileStrict path :: IO (Either SomeException String)
+          case result of
+            Left _ -> return Nothing
+            Right s -> case readMaybe (strip s) :: Maybe Integer of
+              Nothing -> return Nothing
+              Just milliDeg -> return $ Just (fromIntegral milliDeg / 1000.0)
+    strip = dropWhile (== ' ') . reverse . dropWhile (== '\n') . reverse . dropWhile (== ' ')
+
+-- | Get current ASUS info using the system DBus client from Context.
+getASUSInfo :: TaffyIO ASUSInfo
+getASUSInfo = asks systemDBusClient >>= liftIO . getASUSInfoFromClient
+
+-- | Get current ASUS info from a DBus client.
+getASUSInfoFromClient :: Client -> IO ASUSInfo
+getASUSInfoFromClient client = do
+  (profile, acProfile, batteryProfile) <- readProfilesFromClient client
+  readASUSTelemetry
+    unknownASUSInfo
+      { asusProfile = profile,
+        asusACProfile = acProfile,
+        asusBatteryProfile = batteryProfile
+      }
+
+-- | Refresh telemetry that has no event interface while preserving the
+-- profile values maintained by the asusd PropertiesChanged subscription.
+readASUSTelemetry :: ASUSInfo -> IO ASUSInfo
+readASUSTelemetry old = do
+  onACPower <- readOnACPower
+  frequencyInfo <- readCPUFrequencyInfo
+  temp <- readCpuTempC
+  return
+    old
+      { asusOnACPower = onACPower,
+        asusCpuFreqGHz = fromMaybe 0 $ cpuFrequencyAverageGHz frequencyInfo,
+        asusCpuTempC = temp
+      }
+
+-- State management for monitoring
+
+newtype ASUSInfoChanVar
+  = ASUSInfoChanVar (TChan ASUSInfo, MVar ASUSInfo)
+
+-- | Get the current ASUS info state.
+getASUSInfoState :: TaffyIO ASUSInfo
+getASUSInfoState = do
+  ASUSInfoChanVar (_, theVar) <- getASUSInfoChanVar
+  lift $ readMVar theVar
+
+-- | Get a broadcast channel for ASUS info updates.
+getASUSInfoChan :: TaffyIO (TChan ASUSInfo)
+getASUSInfoChan = do
+  ASUSInfoChanVar (chan, _) <- getASUSInfoChanVar
+  return chan
+
+getASUSInfoChanVar :: TaffyIO ASUSInfoChanVar
+getASUSInfoChanVar =
+  getStateDefault $ ASUSInfoChanVar <$> monitorASUSInfo
+
+monitorASUSInfo :: TaffyIO (TChan ASUSInfo, MVar ASUSInfo)
+monitorASUSInfo = do
+  infoVar <- lift $ newMVar unknownASUSInfo
+  chan <- liftIO newBroadcastTChanIO
+  wakeupChan <- getWakeupChannelForDelay defaultASUSPollIntervalSeconds
+  ourWakeupChan <- liftIO $ atomically $ dupTChan wakeupChan
+  taffyFork $ do
+    ctx <- ask
+    let updateProfiles = updateASUSInfo chan infoVar
+        signalCallback _ _ _ _ = runReaderT updateProfiles ctx
+        waitForNextPoll = void $ atomically $ readTChan ourWakeupChan
+    _ <- registerForASUSPropertiesChanged signalCallback
+    -- Do an initial update
+    updateProfiles
+    -- Profile changes are subscription-driven. Only sysfs telemetry is polled.
+    lift $ forever $ do
+      waitForNextPoll
+      updateASUSTelemetry chan infoVar
+  return (chan, infoVar)
+
+registerForASUSPropertiesChanged ::
+  (Signal -> String -> Map String Variant -> [String] -> IO ()) ->
+  ReaderT Context IO SignalHandler
+registerForASUSPropertiesChanged signalHandler = do
+  client <- asks systemDBusClient
+  lift $
+    DBus.registerForPropertiesChanged
+      client
+      matchAny
+        { matchInterface = Just asusInterfaceName,
+          matchPath = Just asusObjectPath
+        }
+      signalHandler
+
+updateASUSInfo ::
+  TChan ASUSInfo ->
+  MVar ASUSInfo ->
+  TaffyIO ()
+updateASUSInfo chan var = do
+  info <- getASUSInfo
+  lift $ publishASUSInfoIfChanged chan var info
+
+updateASUSTelemetry :: TChan ASUSInfo -> MVar ASUSInfo -> IO ()
+updateASUSTelemetry chan var = do
+  telemetry <- readASUSTelemetry =<< readMVar var
+  modifyMVar_ var $ \latest -> do
+    let info =
+          latest
+            { asusOnACPower = asusOnACPower telemetry,
+              asusCpuFreqGHz = asusCpuFreqGHz telemetry,
+              asusCpuTempC = asusCpuTempC telemetry
+            }
+    publishAgainst latest info
+  where
+    publishAgainst old info = do
+      when (info /= old) $ atomically $ writeTChan chan info
+      pure info
+
+publishASUSInfoIfChanged :: TChan ASUSInfo -> MVar ASUSInfo -> ASUSInfo -> IO ()
+publishASUSInfoIfChanged chan var info =
+  modifyMVar_ var $ \old -> do
+    when (info /= old) $ atomically $ writeTChan chan info
+    pure info

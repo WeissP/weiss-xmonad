@@ -1,4 +1,4 @@
 import WeissXMonad
 
 main :: IO ()
-main = WeissXMonad.runXmonad "/home/weiss/.config/xmobar"
+main = WeissXMonad.runXmonad

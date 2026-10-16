@@ -1,7 +1,16 @@
 { pkgs ? import <nixpkgs> { overlays = [ (import ./overlay.nix) ]; } }:
 
 pkgs.haskellPackages.shellFor {
-  packages = p: [ p.taffybar p.my-taffybar ];
+  packages = p: [
+    p.taffybar
+    p.my-taffybar
+    p."gtk-sni-tray"
+    p."gtk-strut"
+    p."status-notifier-item"
+    p."dbus-menu"
+    p."dbus-hslogger"
+    p."xdg-desktop-entry"
+  ];
 
   withHoogle = true;
 
@@ -10,7 +19,7 @@ pkgs.haskellPackages.shellFor {
     cabal-install
     haskell-language-server
   ]) ++ (with pkgs.haskellPackages; [
-    hlint ormolu weeder implicit-hie hie-bios
+    alex happy hlint ormolu stan weeder implicit-hie hie-bios
   ]);
 
   inherit (pkgs.haskellPackages.taffybar.env) shellHook;

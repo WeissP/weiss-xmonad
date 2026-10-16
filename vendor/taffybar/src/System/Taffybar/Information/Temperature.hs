@@ -1,0 +1,247 @@
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+
+-- |
+-- Module      : System.Taffybar.Information.Temperature
+-- Copyright   : (c) Ivan Malison
+-- License     : BSD3-style (see LICENSE)
+--
+-- Maintainer  : Ivan Malison <IvanMalison@gmail.com>
+-- Stability   : unstable
+-- Portability : unportable
+--
+-- This module provides functions to read system temperature information from
+-- Linux thermal zones and hwmon devices.
+module System.Taffybar.Information.Temperature
+  ( TemperatureInfo (..),
+    ThermalSensor (..),
+    TemperatureUnit (..),
+    discoverSensors,
+    readSensorTemperature,
+    readAllTemperatures,
+    readTemperaturesFrom,
+    convertTemperature,
+    getTemperatureInfoChan,
+    getTemperatureInfoState,
+  )
+where
+
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar
+import Control.Concurrent.STM.TChan
+import Control.Exception (SomeException, try)
+import Control.Monad (forM, forever, void, when)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.STM (atomically)
+import qualified Data.ByteString.Char8 as BS8
+import Data.List (sortOn)
+import Data.Maybe (catMaybes, fromMaybe)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.FilePath ((</>))
+import System.Taffybar.Context (TaffyIO, getStateDefault)
+import System.Taffybar.Information.Wakeup (getWakeupChannelForDelay)
+import Text.Read (readMaybe)
+
+-- | Temperature unit for display
+data TemperatureUnit = Celsius | Fahrenheit | Kelvin
+  deriving (Show, Eq)
+
+-- | Information about a thermal sensor
+data ThermalSensor = ThermalSensor
+  { -- | Human-readable sensor name
+    sensorName :: String,
+    -- | Path to the temperature file
+    sensorPath :: FilePath,
+    -- | Zone or hwmon identifier
+    sensorZone :: String
+  }
+  deriving (Show, Eq)
+
+-- | Temperature reading from a sensor
+data TemperatureInfo = TemperatureInfo
+  { -- | Temperature in Celsius
+    tempCelsius :: Double,
+    -- | The sensor this reading is from
+    tempSensor :: ThermalSensor
+  }
+  deriving (Show, Eq)
+
+-- | Convert temperature from Celsius to another unit
+convertTemperature :: TemperatureUnit -> Double -> Double
+convertTemperature Celsius t = t
+convertTemperature Fahrenheit t = t * 1.8 + 32
+convertTemperature Kelvin t = t + 273.15
+
+-- | Discover all available thermal sensors on the system
+-- Tries thermal_zone first, then hwmon devices
+discoverSensors :: IO [ThermalSensor]
+discoverSensors = do
+  thermalSensors <- discoverThermalZones
+  hwmonSensors <- discoverHwmon
+  return $ thermalSensors ++ hwmonSensors
+
+-- | Discover thermal zones from /sys/class/thermal/
+discoverThermalZones :: IO [ThermalSensor]
+discoverThermalZones = do
+  let thermalDir = "/sys/class/thermal"
+  exists <- doesDirectoryExist thermalDir
+  if not exists
+    then return []
+    else do
+      entries <- listDirectory thermalDir
+      let zones = filter (isPrefixOf "thermal_zone") entries
+      sensors <- forM zones $ \zone -> do
+        let tempPath = thermalDir </> zone </> "temp"
+            typePath = thermalDir </> zone </> "type"
+        tempExists <- doesFileExist tempPath
+        if tempExists
+          then do
+            sensorType <- readFileSafe typePath
+            return $
+              Just
+                ThermalSensor
+                  { sensorName = fromMaybe zone sensorType,
+                    sensorPath = tempPath,
+                    sensorZone = zone
+                  }
+          else return Nothing
+      return $ catMaybes sensors
+  where
+    isPrefixOf prefix str = take (length prefix) str == prefix
+
+-- | Discover hwmon temperature sensors from /sys/class/hwmon/
+discoverHwmon :: IO [ThermalSensor]
+discoverHwmon = do
+  let hwmonDir = "/sys/class/hwmon"
+  exists <- doesDirectoryExist hwmonDir
+  if not exists
+    then return []
+    else do
+      entries <- listDirectory hwmonDir
+      let hwmons = filter (isPrefixOf "hwmon") entries
+      sensorLists <- forM hwmons $ \hwmon -> do
+        let hwmonPath = hwmonDir </> hwmon
+            namePath = hwmonPath </> "name"
+        hwmonName <- readFileSafe namePath
+        -- Find all temp*_input files
+        allFiles <- listDirectory hwmonPath
+        let tempInputs = filter isTempInput allFiles
+        forM tempInputs $ \tempFile -> do
+          let tempPath = hwmonPath </> tempFile
+              sensorId = extractSensorId tempFile
+              labelPath = hwmonPath </> ("temp" ++ sensorId ++ "_label")
+          labelName <- readFileSafe labelPath
+          let name = case (labelName, hwmonName) of
+                (Just l, _) -> l
+                (_, Just n) -> n ++ "_temp" ++ sensorId
+                _ -> hwmon ++ "_temp" ++ sensorId
+          return
+            ThermalSensor
+              { sensorName = name,
+                sensorPath = tempPath,
+                sensorZone = hwmon
+              }
+      return $ concat sensorLists
+  where
+    isPrefixOf prefix str = take (length prefix) str == prefix
+    isTempInput file = take 4 file == "temp" && isSuffixOf "_input" file
+    isSuffixOf suffix str =
+      let suffixLen = length suffix
+          strLen = length str
+       in strLen >= suffixLen && drop (strLen - suffixLen) str == suffix
+    -- Extract sensor number from "temp1_input" -> "1"
+    extractSensorId file =
+      let withoutPrefix = drop 4 file -- remove "temp"
+          withoutSuffix = take (length withoutPrefix - 6) withoutPrefix -- remove "_input"
+       in withoutSuffix
+
+-- | Read temperature from a file, returns Nothing if file cannot be read
+readFileSafe :: FilePath -> IO (Maybe String)
+readFileSafe path = do
+  exists <- doesFileExist path
+  if not exists
+    then return Nothing
+    else do
+      result <- try $ BS8.readFile path :: IO (Either SomeException BS8.ByteString)
+      case result of
+        Left _ -> return Nothing
+        Right content -> return $ Just $ strip $ BS8.unpack content
+  where
+    strip = dropWhile (== ' ') . reverse . dropWhile (== '\n') . reverse . dropWhile (== ' ')
+
+-- | Read temperature from a single sensor
+-- Returns Nothing if the sensor cannot be read
+readSensorTemperature :: ThermalSensor -> IO (Maybe TemperatureInfo)
+readSensorTemperature sensor = do
+  result <- try $ BS8.readFile (sensorPath sensor) :: IO (Either SomeException BS8.ByteString)
+  case result of
+    Left _ -> return Nothing
+    Right content ->
+      case readMaybe (strip $ BS8.unpack content) :: Maybe Integer of
+        Nothing -> return Nothing
+        Just milliDegrees ->
+          return $
+            Just
+              TemperatureInfo
+                { tempCelsius = fromIntegral milliDegrees / 1000.0,
+                  tempSensor = sensor
+                }
+  where
+    strip = dropWhile (== ' ') . reverse . dropWhile (== '\n') . reverse . dropWhile (== ' ')
+
+-- | Read temperatures from all discovered sensors
+-- Returns list sorted by temperature (highest first)
+readAllTemperatures :: IO [TemperatureInfo]
+readAllTemperatures = do
+  sensors <- discoverSensors
+  temps <- forM sensors readSensorTemperature
+  return $ sortOn (negate . tempCelsius) $ catMaybes temps
+
+-- | Read temperatures from specific sensors (by path)
+readTemperaturesFrom :: [ThermalSensor] -> IO [TemperatureInfo]
+readTemperaturesFrom sensors = do
+  temps <- forM sensors readSensorTemperature
+  return $ catMaybes temps
+
+newtype TemperatureInfoChanVar
+  = TemperatureInfoChanVar (TChan [TemperatureInfo], MVar [TemperatureInfo])
+
+-- | Get a shared broadcast channel containing all discovered temperature
+-- readings. The first call starts one producer for the process; subsequent
+-- calls reuse it, so the interval from the first call wins.
+getTemperatureInfoChan :: Double -> TaffyIO (TChan [TemperatureInfo])
+getTemperatureInfoChan interval = do
+  TemperatureInfoChanVar (chan, _) <- setupTemperatureInfoChanVar interval
+  pure chan
+
+-- | Read the latest snapshot cached by 'getTemperatureInfoChan'.
+getTemperatureInfoState :: Double -> TaffyIO [TemperatureInfo]
+getTemperatureInfoState interval = do
+  TemperatureInfoChanVar (_, var) <- setupTemperatureInfoChanVar interval
+  liftIO $ readMVar var
+
+setupTemperatureInfoChanVar :: Double -> TaffyIO TemperatureInfoChanVar
+setupTemperatureInfoChanVar interval = getStateDefault $ do
+  wakeupChan <- getWakeupChannelForDelay $ max 0.000001 interval
+  ourWakeupChan <- liftIO $ atomically $ dupTChan wakeupChan
+  liftIO $ do
+    sensors <- discoverSensors
+    initialInfo <- sortOn (negate . tempCelsius) <$> readTemperaturesFrom sensors
+    chan <- newBroadcastTChanIO
+    var <- newMVar initialInfo
+    sensorsVar <- newMVar sensors
+    void $ forkIO $ forever $ do
+      void $ atomically $ readTChan ourWakeupChan
+      currentSensors <- readMVar sensorsVar
+      sampled <- sortOn (negate . tempCelsius) <$> readTemperaturesFrom currentSensors
+      info <-
+        if null sampled
+          then do
+            refreshedSensors <- discoverSensors
+            void $ swapMVar sensorsVar refreshedSensors
+            sortOn (negate . tempCelsius) <$> readTemperaturesFrom refreshedSensors
+          else pure sampled
+      old <- swapMVar var info
+      when (info /= old) $ atomically $ writeTChan chan info
+    pure $ TemperatureInfoChanVar (chan, var)

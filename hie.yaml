@@ -10,4 +10,4 @@ cradle:
       config: {cradle: {cabal: {component: "weiss-xmonad:weiss-xmonad-exe"}}}
 
     - path: "weiss-taffybar"
-      config: {cradle: {cabal: {component: "weiss-xmonad:weiss-taffybar-exe"}}}
+      config: {cradle: {cabal: {component: "weiss-xmonad:taffybar"}}}

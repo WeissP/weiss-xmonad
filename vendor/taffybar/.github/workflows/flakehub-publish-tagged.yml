@@ -16,12 +16,28 @@ jobs:
       id-token: "write"
       contents: "read"
     steps:
-      - uses: "actions/checkout@v3"
+      - uses: "actions/checkout@v6"
         with:
           ref: "${{ (inputs.tag != null) && format('refs/tags/{0}', inputs.tag) || '' }}"
-      - uses: "DeterminateSystems/nix-installer-action@main"
-      - uses: "DeterminateSystems/flakehub-push@main"
+      - uses: "DeterminateSystems/determinate-nix-action@v3"
+      - id: "flakehub_push"
+        continue-on-error: true
+        uses: "DeterminateSystems/flakehub-push@v6"
         with:
           visibility: "public"
           name: "taffybar/taffybar"
-          tag: "${{ inputs.tag }}"
+          tag: "${{ inputs.tag || github.ref_name }}"
+          # Our flake exposes multiple systems and uses IFD-backed Haskell
+          # packaging, which makes flake inventory evaluation fail in this
+          # publish job. Skip inventory collection but still publish releases.
+          my-flake-is-too-big: true
+      - name: "Report skipped FlakeHub publish"
+        if: "${{ steps.flakehub_push.outcome == 'failure' }}"
+        run: |
+          {
+            echo "## FlakeHub publish skipped"
+            echo
+            echo "The release tag was created, but FlakeHub publish failed."
+            echo "This job is non-blocking because FlakeHub authentication depends on external organization setup."
+            echo "Re-run this workflow manually after FlakeHub authentication is available."
+          } >> "$GITHUB_STEP_SUMMARY"

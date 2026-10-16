@@ -10,11 +10,50 @@ final: prev: let
   inherit (pkgs) lib;
 
   haskellLib = pkgs.haskell.lib.compose;
+  fontsConf = pkgs.makeFontsConf {
+    fontDirectories = [ pkgs.dejavu_fonts ];
+  };
+  wirePlumberIntrospectionEnv = ''
+    export PKG_CONFIG_PATH=${pkgs.wireplumber.dev}/lib/pkgconfig:${pkgs.pipewire.dev}/lib/pkgconfig:${pkgs.libsysprof-capture}/lib/pkgconfig:${pkgs.pcre2.dev}/lib/pkgconfig:${pkgs.util-linux.dev}/lib/pkgconfig:${pkgs.libselinux.dev}/lib/pkgconfig:${pkgs.libsepol.dev}/lib/pkgconfig:''${PKG_CONFIG_PATH:-}
+    export GI_GIR_PATH=${pkgs.wireplumber.dev}/share/gir-1.0:''${GI_GIR_PATH:-}
+    export GI_TYPELIB_PATH=${pkgs.wireplumber}/lib/girepository-1.0:${pkgs.glib.out}/lib/girepository-1.0:''${GI_TYPELIB_PATH:-}
+    export XDG_DATA_DIRS=${pkgs.wireplumber.dev}/share:''${XDG_DATA_DIRS:-}
+  '';
 
   # Add further customization of haskellPackages here
   configuration = with haskellLib; self: super: {
+    # Fix gtk3 build failure due to deprecated threading APIs being treated as errors
+    gtk3 = lib.pipe super.gtk3 [
+      # gtk2hs ships a C shim that still calls gdk_threads_* APIs which are
+      # deprecated in GTK3 headers. Some toolchains treat this warning as an
+      # error, so explicitly mark it as non-fatal.
+      #
+      # Note: The `-optc` flag must be passed as part of the same argument,
+      # i.e. `-optc-Wno-error=...` (not `-optc=-Wno-error=...`).
+      (appendConfigureFlags ["--ghc-option=-optc-Wno-error=deprecated-declarations"])
+    ];
+
+    gi-wireplumber = lib.pipe super.gi-wireplumber [
+      dontHaddock
+      (overrideCabal (drv: {
+        # Keep WirePlumber available to Cabal through pkg-config without
+        # propagating its full runtime closure into downstream configure checks.
+        libraryPkgconfigDepends = [];
+        librarySystemDepends = [];
+        libraryToolDepends = (drv.libraryToolDepends or []) ++ [ pkgs.pkg-config ];
+        preConfigure = ''
+          ${drv.preConfigure or ""}
+          ${wirePlumberIntrospectionEnv}
+        '';
+      }))
+    ];
+
     taffybar = lib.pipe super.taffybar [
       (self.generateOptparseApplicativeCompletions [ "taffybar" ])
+      (overrideCabal (drv: {
+        librarySystemDepends =
+          (drv.librarySystemDepends or []) ++ [ pkgs.gtk-layer-shell ];
+      }))
       (with pkgs.xorg; addTestToolDepends [
         xorgserver   # Provides Xvfb
         xprop        # Used for test assertions
@@ -30,9 +69,17 @@ final: prev: let
       (overrideCabal (drv: {
         # This is required so that "cabal repl" and haskell-language-server
         # can find non-pkgconfig dependencies.
+        preCheck = ''
+          ${drv.preCheck or ""}
+          export FONTCONFIG_FILE=${fontsConf}
+          export FONTCONFIG_PATH=${pkgs.fontconfig.out}/etc/fonts
+        '';
         shellHook = ''
           ${drv.shellHook or ""}
           export LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.zlib ]}:$LD_LIBRARY_PATH
+          export FONTCONFIG_FILE=${fontsConf}
+          export FONTCONFIG_PATH=${pkgs.fontconfig.out}/etc/fonts
+          ${wirePlumberIntrospectionEnv}
         '';
       }))
 
@@ -60,6 +107,18 @@ final: prev: let
             jq -r 'length|if .==0 then "No hints." else "\(.) hint\(if .>1 then "s" else "" end).\n"|halt_error end' < $src/report.json
             ln -s $src $out
          '';
+
+          ormolu = pkgs.runCommand "${drv.pname}-check-ormolu-${drv.version}" {
+            inherit (drv) src;
+            nativeBuildInputs = [ pkgs.haskellPackages.ormolu pkgs.findutils ];
+          } ''
+            cd $src
+            find . -name '*.hs' | while read -r f; do
+              ormolu --mode check "$f" || { echo "ormolu: $f is not formatted"; exit 1; }
+            done
+            echo "All files formatted."
+            touch $out
+          '';
         };
       }))
     ];
@@ -82,12 +141,6 @@ final: prev: let
         preFixup = "";
       }))
     ];
-
-    # Overrides for building with GHC >=9.8.
-    # Required until these are merged into nixos-unstable:
-    #   https://github.com/NixOS/nixpkgs/pull/339272
-    #   https://github.com/NixOS/nixpkgs/pull/342755
-    scotty = doJailbreak super.scotty; # text <2.1
   };
 
   fixDeps92 = self: super: lib.optionalAttrs (lib.versionOlder super.ghc.version "9.4") {
@@ -96,6 +149,8 @@ final: prev: let
   };
 
 in
-  lib.composeExtensions
+  lib.composeManyExtensions [
     (haskellLib.packageSourceOverrides sourceOverrides)
-    (lib.composeExtensions configuration fixDeps92)
+    configuration
+    fixDeps92
+  ]

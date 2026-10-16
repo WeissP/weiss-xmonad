@@ -1,4 +1,10 @@
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
+
 -----------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------
+
 -- |
 -- Module      : System.Taffybar.SimpleConfig
 -- Copyright   : (c) Ivan A. Malison
@@ -10,35 +16,59 @@
 --
 -- This module defines a simpler, but less flexible config system than the one
 -- offered in "System.Taffybar.Context".
------------------------------------------------------------------------------
 module System.Taffybar.SimpleConfig
-  ( SimpleTaffyConfig(..)
-  , Position(..)
-  , defaultSimpleTaffyConfig
-  , simpleDyreTaffybar
-  , simpleTaffybar
-  , toTaffyConfig
-  , toTaffybarConfig
-  , useAllMonitors
-  , usePrimaryMonitor
-  , StrutSize(..)
-  ) where
+  ( SimpleTaffyConfig (..),
+    SimpleMonitorConfig (..),
+    BarLevelConfig (..),
+    Position (..),
+    defaultSimpleTaffyConfig,
+    simpleDyreTaffybar,
+    simpleTaffybar,
+    toTaffyConfig,
+    toTaffybarConfig,
+    toTaffybarConfigPerMonitor,
+    useAllMonitors,
+    usePrimaryMonitor,
+    withPriority,
+    setWidgetPriority,
+    StrutSize,
+    pattern ExactSize,
+    pattern ScreenRatio,
+  )
+where
 
 import qualified Control.Concurrent.MVar as MV
-import           Control.Monad
-import           Control.Monad.Trans.Class
-import           Data.Default (Default(..))
-import           Data.List
-import           Data.Maybe
-import           Data.Unique
+import Control.Monad
+import Control.Monad.Trans.Class
+import Data.Default (Default (..))
+import Data.List
+import Data.Maybe
+import qualified Data.Text as T
+import Data.Unique
+import GI.Gdk
 import qualified GI.Gtk as Gtk
-import           GI.Gdk
-import           Graphics.UI.GIGtkStrut
-import           System.Taffybar.Information.X11DesktopInfo
-import           System.Taffybar
-import qualified System.Taffybar.Context as BC (BarConfig(..), TaffybarConfig(..))
-import           System.Taffybar.Context hiding (TaffybarConfig(..), BarConfig(..))
-import           System.Taffybar.Util
+import Graphics.UI.GIGtkStrut hiding (ExactSize, ScreenRatio, StrutSize)
+import qualified Graphics.UI.GIGtkStrut as GIGtkStrut
+import System.Taffybar
+import System.Taffybar.Context hiding (BarConfig (..), TaffybarConfig (..))
+import qualified System.Taffybar.Context as BC (BarConfig (..), TaffybarConfig (..))
+import System.Taffybar.WidgetPriority (setWidgetPriority, withPriority)
+
+-- | Size of a bar strut reservation. This is an alias for
+-- 'Graphics.UI.GIGtkStrut.StrutSize'.
+type StrutSize = GIGtkStrut.StrutSize
+
+-- | Reserve an exact number of pixels.
+pattern ExactSize :: Int -> StrutSize
+pattern ExactSize size <- GIGtkStrut.ExactSize (fromIntegral -> size)
+  where
+    ExactSize size = GIGtkStrut.ExactSize (fromIntegral size)
+
+-- | Reserve a fraction of the monitor dimension as a strut size.
+pattern ScreenRatio :: Rational -> StrutSize
+pattern ScreenRatio ratio = GIGtkStrut.ScreenRatio ratio
+
+{-# COMPLETE ExactSize, ScreenRatio #-}
 
 -- | An ADT representing the edge of the monitor along which taffybar should be
 -- displayed.
@@ -49,45 +79,52 @@ data Position = Top | Bottom
 -- 'TaffybarConfig'. Unless you have a good reason to use taffybar's more
 -- advanced interface, you should stick to using this one.
 data SimpleTaffyConfig = SimpleTaffyConfig
-  {
-  -- | The monitor number to put the bar on (default: 'usePrimaryMonitor')
-    monitorsAction :: TaffyIO [Int]
-  -- | Number of pixels to reserve for the bar (default: 30)
-  , barHeight :: StrutSize
-  -- | Number of additional pixels to reserve for the bar strut (default: 0)
-  , barPadding :: Int
-  -- | The position of the bar on the screen (default: 'Top')
-  , barPosition :: Position
-  -- | The number of pixels between widgets (default: 5)
-  , widgetSpacing :: Int
-  -- | Widget constructors whose outputs are placed at the beginning of the bar
-  , startWidgets :: [TaffyIO Gtk.Widget]
-  -- | Widget constructors whose outputs are placed in the center of the bar
-  , centerWidgets :: [TaffyIO Gtk.Widget]
-  -- | Widget constructors whose outputs are placed at the end of the bar
-  , endWidgets :: [TaffyIO Gtk.Widget]
-  -- | List of paths to CSS stylesheets that should be loaded at startup.
-  , cssPaths :: [FilePath]
-  -- | Hook to run at taffybar startup.
-  , startupHook :: TaffyIO ()
+  { -- | The monitor number to put the bar on (default: 'usePrimaryMonitor')
+    monitorsAction :: TaffyIO [Int],
+    -- | CSS classes applied to each bar window.
+    barCssClasses :: [T.Text],
+    -- | Number of pixels to reserve for the bar (default: 30)
+    barHeight :: StrutSize,
+    -- | Number of additional pixels to reserve for the bar strut (default: 0)
+    barPadding :: Int,
+    -- | The position of the bar on the screen (default: 'Top')
+    barPosition :: Position,
+    -- | The number of pixels between widgets (default: 5)
+    widgetSpacing :: Int,
+    -- | Widget constructors whose outputs are placed at the beginning of the bar
+    startWidgets :: [TaffyIO Gtk.Widget],
+    -- | Widget constructors whose outputs are placed in the center of the bar
+    centerWidgets :: [TaffyIO Gtk.Widget],
+    -- | Widget constructors whose outputs are placed at the end of the bar
+    endWidgets :: [TaffyIO Gtk.Widget],
+    -- | Optional level-based widget configuration. If this field is set,
+    -- 'startWidgets', 'centerWidgets' and 'endWidgets' are ignored.
+    barLevels :: Maybe [BarLevelConfig],
+    -- | List of paths to CSS stylesheets that should be loaded at startup.
+    cssPaths :: [FilePath],
+    -- | Hook to run at taffybar startup.
+    startupHook :: TaffyIO ()
   }
 
 -- | Sensible defaults for most of the fields of 'SimpleTaffyConfig'. You'll
 -- need to specify the widgets you want in the bar with 'startWidgets',
 -- 'centerWidgets' and 'endWidgets'.
 defaultSimpleTaffyConfig :: SimpleTaffyConfig
-defaultSimpleTaffyConfig = SimpleTaffyConfig
-  { monitorsAction = useAllMonitors
-  , barHeight = ScreenRatio $ 1 / 27
-  , barPadding = 0
-  , barPosition = Top
-  , widgetSpacing = 5
-  , startWidgets = []
-  , centerWidgets = []
-  , endWidgets = []
-  , cssPaths = []
-  , startupHook = return ()
-  }
+defaultSimpleTaffyConfig =
+  SimpleTaffyConfig
+    { monitorsAction = useAllMonitors,
+      barCssClasses = [],
+      barHeight = ScreenRatio $ 1 / 27,
+      barPadding = 0,
+      barPosition = Top,
+      widgetSpacing = 5,
+      startWidgets = [],
+      centerWidgets = [],
+      endWidgets = [],
+      barLevels = Nothing,
+      cssPaths = [],
+      startupHook = return ()
+    }
 
 instance Default SimpleTaffyConfig where
   def = defaultSimpleTaffyConfig
@@ -95,21 +132,24 @@ instance Default SimpleTaffyConfig where
 -- | Convert a 'SimpleTaffyConfig' into a 'StrutConfig' that can be used with
 -- gtk-strut.
 toStrutConfig :: SimpleTaffyConfig -> Int -> StrutConfig
-toStrutConfig SimpleTaffyConfig { barHeight = height
-                                , barPadding = padding
-                                , barPosition = pos
-                                } monitor =
-  defaultStrutConfig
-  { strutHeight = height
-  , strutYPadding = fromIntegral padding
-  , strutXPadding = fromIntegral padding
-  , strutAlignment = Center
-  , strutMonitor = Just $ fromIntegral monitor
-  , strutPosition =
-      case pos of
-        Top -> TopPos
-        Bottom -> BottomPos
-  }
+toStrutConfig
+  SimpleTaffyConfig
+    { barHeight = height,
+      barPadding = padding,
+      barPosition = pos
+    }
+  monitor =
+    defaultStrutConfig
+      { strutHeight = height,
+        strutYPadding = fromIntegral padding,
+        strutXPadding = fromIntegral padding,
+        strutAlignment = Center,
+        strutMonitor = Just $ fromIntegral monitor,
+        strutPosition =
+          case pos of
+            Top -> TopPos
+            Bottom -> BottomPos
+      }
 
 toBarConfig :: SimpleTaffyConfig -> Int -> IO BC.BarConfig
 toBarConfig config monitor = do
@@ -117,17 +157,35 @@ toBarConfig config monitor = do
   barId <- newUnique
   return
     BC.BarConfig
-    { BC.strutConfig = strutConfig
-    , BC.widgetSpacing = fromIntegral $ widgetSpacing config
-    , BC.startWidgets = startWidgets config
-    , BC.centerWidgets = centerWidgets config
-    , BC.endWidgets = endWidgets config
-    , BC.barId = barId
-    }
+      { BC.strutConfig = strutConfig,
+        BC.barCssClasses = barCssClasses config,
+        BC.widgetSpacing = fromIntegral $ widgetSpacing config,
+        BC.startWidgets = startWidgets config,
+        BC.centerWidgets = centerWidgets config,
+        BC.endWidgets = endWidgets config,
+        BC.barLevels = barLevels config,
+        BC.barId = barId
+      }
 
-newtype SimpleBarConfigs = SimpleBarConfigs (MV.MVar [(Int, BC.BarConfig)])
+-- | A monitor-specific simple configuration and the key that identifies it.
+-- Returning the same key lets Taffybar reuse the existing bar. Changing the
+-- key causes that monitor's bar to be rebuilt.
+data SimpleMonitorConfig = SimpleMonitorConfig
+  { simpleMonitorConfigKey :: T.Text,
+    simpleMonitorConfig :: SimpleTaffyConfig
+  }
+
+data SimpleBarConfigEntry = SimpleBarConfigEntry
+  { simpleBarConfigMonitor :: Int,
+    simpleBarConfigKey :: T.Text,
+    simpleBarConfigValue :: BC.BarConfig
+  }
+
+newtype SimpleBarConfigs = SimpleBarConfigs (MV.MVar [SimpleBarConfigEntry])
 
 {-# DEPRECATED toTaffyConfig "Use toTaffybarConfig instead" #-}
+
+-- | Deprecated alias for 'toTaffybarConfig'.
 toTaffyConfig :: SimpleTaffyConfig -> BC.TaffybarConfig
 toTaffyConfig = toTaffybarConfig
 
@@ -135,31 +193,53 @@ toTaffyConfig = toTaffybarConfig
 -- with 'startTaffybar' or 'dyreTaffybar'.
 toTaffybarConfig :: SimpleTaffyConfig -> BC.TaffybarConfig
 toTaffybarConfig conf =
-    def
-    { BC.getBarConfigsParam = configGetter
-    , BC.cssPaths = cssPaths conf
-    , BC.startupHook = startupHook conf
+  toTaffybarConfigPerMonitor conf $ \_ ->
+    pure $ SimpleMonitorConfig T.empty conf
+
+-- | Convert a simple configuration using a monitor-specific configuration
+-- builder. The base configuration supplies monitor selection, CSS paths, and
+-- the startup hook. Per-monitor configurations supply bar geometry, classes,
+-- and widgets. Bars are reused while their key is unchanged and rebuilt when
+-- it changes.
+toTaffybarConfigPerMonitor ::
+  SimpleTaffyConfig ->
+  (Int -> TaffyIO SimpleMonitorConfig) ->
+  BC.TaffybarConfig
+toTaffybarConfigPerMonitor conf configForMonitor =
+  def
+    { BC.getBarConfigsParam = configGetter,
+      BC.cssPaths = cssPaths conf,
+      BC.startupHook = startupHook conf
     }
   where
     configGetter = do
       SimpleBarConfigs configsVar <-
-        getStateDefault $ lift (SimpleBarConfigs <$> MV.newMVar [])
+        getStateDefault $ lift $ SimpleBarConfigs <$> MV.newMVar []
       monitorNumbers <- monitorsAction conf
+      requestedConfigs <-
+        forM monitorNumbers $ \monitorNumber -> do
+          monitorConfig <- configForMonitor monitorNumber
+          pure (monitorNumber, monitorConfig)
 
-      let lookupWithIndex barConfigs monitorNumber =
-            (monitorNumber, lookup monitorNumber barConfigs)
-
-          lookupAndUpdate barConfigs = do
-
-            let (alreadyPresent, toCreate) =
-                  partition (isJust . snd) $
-                  map (lookupWithIndex barConfigs) monitorNumbers
-                alreadyPresentConfigs = mapMaybe snd alreadyPresent
-
-            newlyCreated <-
-              mapM (forkM return (toBarConfig conf) . fst) toCreate
-            let result = map snd newlyCreated ++ alreadyPresentConfigs
-            return (barConfigs ++ newlyCreated, result)
+      let lookupAndUpdate existingEntries = do
+            activeEntries <-
+              forM requestedConfigs $ \(monitorNumber, monitorConfig) ->
+                case find
+                  ( \entry ->
+                      simpleBarConfigMonitor entry == monitorNumber
+                        && simpleBarConfigKey entry == simpleMonitorConfigKey monitorConfig
+                  )
+                  existingEntries of
+                  Just entry -> pure entry
+                  Nothing -> do
+                    barConfig <- toBarConfig (simpleMonitorConfig monitorConfig) monitorNumber
+                    pure $
+                      SimpleBarConfigEntry
+                        { simpleBarConfigMonitor = monitorNumber,
+                          simpleBarConfigKey = simpleMonitorConfigKey monitorConfig,
+                          simpleBarConfigValue = barConfig
+                        }
+            pure (activeEntries, map simpleBarConfigValue activeEntries)
 
       lift $ MV.modifyMVar configsVar lookupAndUpdate
 
@@ -172,19 +252,36 @@ simpleTaffybar :: SimpleTaffyConfig -> IO ()
 simpleTaffybar conf = startTaffybar $ toTaffybarConfig conf
 
 getMonitorCount :: IO Int
-getMonitorCount =
-  fromIntegral <$> (screenGetDefault >>= maybe (return 0)
-                    (screenGetDisplay >=> displayGetNMonitors))
+getMonitorCount = do
+  maybeDisplay <- displayGetDefault
+  fromIntegral
+    <$> case maybeDisplay of
+      Just display -> displayGetNMonitors display
+      Nothing ->
+        screenGetDefault
+          >>= maybe
+            (return 0)
+            (screenGetDisplay >=> displayGetNMonitors)
 
 -- | Supply this value for 'monitorsAction' to display the taffybar window on
 -- all monitors.
 useAllMonitors :: TaffyIO [Int]
 useAllMonitors = lift $ do
   count <- getMonitorCount
-  return [0..count-1]
+  return [0 .. count - 1]
 
 -- | Supply this value for 'monitorsAction' to display the taffybar window only
 -- on the primary monitor.
 usePrimaryMonitor :: TaffyIO [Int]
-usePrimaryMonitor =
-  singleton . fromMaybe 0 <$> lift (withX11Context def getPrimaryOutputNumber)
+usePrimaryMonitor = lift $ do
+  maybeDisplay <- displayGetDefault
+  case maybeDisplay of
+    Nothing -> return [0]
+    Just display -> do
+      maybePrimary <- displayGetPrimaryMonitor display
+      monitorCount <- displayGetNMonitors display
+      monitors <- catMaybes <$> mapM (displayGetMonitor display) [0 .. (monitorCount - 1)]
+      let primaryIndex = case maybePrimary of
+            Nothing -> 0
+            Just primary -> fromMaybe 0 (elemIndex primary monitors)
+      return [primaryIndex]

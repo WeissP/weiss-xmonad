@@ -13,3 +13,6 @@ cabal.sandbox.config
 /test/data/*.actual
 /.hspec
 /.hspec-failures
+.worktrees/
+/scratch/
+/packages/gi-wireplumber/GI/

@@ -1,6 +1,5 @@
 module Utils where
 
-import Config
 import Control.Monad (filterM, liftM)
 import Control.Monad.Trans.Maybe
 import Data.Functor ((<&>))
@@ -10,11 +9,8 @@ import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
 import XMonad
-import XMonad.Hooks.StatusBar.PP
 import XMonad.Prelude (Endo (..), WindowScreen)
 import XMonad.StackSet qualified as W
-import XMonad.Util.Loggers
-import XMonad.Util.NamedWindows
 import XMonad.Util.PureX (curScreenId)
 import XMonad.Util.XUtils (pixelToString)
 
@@ -47,46 +43,6 @@ toggleFloat w =
 -- Query: starts with
 (^=?) :: (Eq a) => Query [a] -> [a] -> Query Bool
 q ^=? x = L.isPrefixOf x <$> q
-
--- receive one sperate and three funs to format count, focused window and unfocused window
-myLogTitles ::
-  String ->
-  String ->
-  (Int -> String) ->
-  (String -> String) ->
-  ([String] -> String) ->
-  Logger
-myLogTitles sep1 sep2 formatCount formatFoc formatUnfoc = do
-  winset <- gets windowset
-  let focWin = W.peek winset
-      wins = W.index winset
-      winsUnfoc = filter (\w -> Just w /= focWin) wins
-      count = length wins
-  winNamesUnfoc <- case winsUnfoc of
-    [] -> pure ""
-    xs -> (sep2 ++) . formatUnfoc <$> traverse (fmap show . getName) xs
-  focWinName <- case focWin of
-    Just justFoc ->
-      (sep1 ++)
-        . formatFoc
-        . shorten focusedTitleLength
-        . show
-        <$> getName justFoc
-    Nothing -> pure ""
-  pure . Just $ formatCount count <> focWinName <> winNamesUnfoc
-
-logWindowCount :: X (Maybe String)
-logWindowCount = withWindowSet ct
-  where
-    ct ss =
-      return $
-        Just $
-          show $
-            length $
-              W.integrate' $
-                W.stack $
-                  W.workspace $
-                    W.current ss
 
 logMaster :: X Bool
 logMaster = withWindowSet isM
