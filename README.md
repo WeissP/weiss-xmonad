@@ -105,14 +105,34 @@ monitor geometry selection remains separate from the widget lists.
 Workspace names appear at the left, without window icons. The wide bar shows
 nonempty workspaces; the compact bar shows active, visible, and urgent
 workspaces. Scratchpad workspaces are hidden. Click a name to switch to it.
-Numbered families such as `1.1` and `1.2` share a tightly spaced, tinted group;
-different families have larger gaps. The first ordered numbered family is blue,
-the second is green, and the remaining numbered families share a neutral style.
-These accents follow the persistent shortcut order in XMonad and update when
-that order changes. Restart the rebuilt XMonad once to publish the initial order;
-without it, numbered groups use the neutral style.
-The focused workspace has a blue fill; workspaces visible on another screen
-have a teal outline and background.
+Numbered families such as `1.1` and `1.2` share a tightly spaced group;
+different families have larger gaps. All groups use the same neutral background.
+When a numbered Chinese member is shown, its family gets a shared heading and
+member buttons, for example `览 [1] [2]` for `览` and `览2`. If only `览2` is
+shown, it appears as `览 [2]`. Chinese families without visible numbered members
+keep their existing plain labels and shared group.
+
+Workspace styling follows one rule: **group top edges show shortcut order;
+member buttons show workspace state**.
+
+| Element                                         | Style                                                |
+|-------------------------------------------------|------------------------------------------------------|
+| First ordered numbered family group             | Solid lavender top edge                                 |
+| Second ordered numbered family group            | Dotted lavender top edge                                |
+| All family headings                             | Pale lavender text on muted plum badges              |
+| Inactive member                                 | White text, transparent background                   |
+| Focused member                                  | Soft teal fill, dark bold text                           |
+| Member visible on another screen                | Soft teal outline, no fill                               |
+| Member containing a window requesting attention | Amber underline, preserving focus/visibility styling |
+
+Family headings are bold and slightly larger than member labels, with the same
+muted plum background badge for every leading number and no borders. The same member-state rules apply to Chinese workspaces.
+The top-edge markers span the whole family group and follow XMonad's persistent
+shortcut order. Every group reserves the same two-pixel top border, transparent
+when unmarked, so order changes never change its width or height. All family
+headings use pale lavender text. Restart the rebuilt XMonad once to publish the
+initial order; without it, all groups remain unmarked.
+
 XMonad's `pagerHints` supplies visibility on the other screen; rebuild and
 restart XMonad as well as Taffybar when first enabling these hints.
 
