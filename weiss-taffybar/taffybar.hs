@@ -17,7 +17,7 @@ fullBar =
   defBar
     { startWidgets = [workspaces]
     , centerWidgets = [clock]
-    , endWidgets = [disk, memory, cpu, media]
+    , endWidgets = [weather, disk, memory, cpu, media]
     }
 
 compactBar :: SimpleTaffyConfig

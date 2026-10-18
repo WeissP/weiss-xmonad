@@ -78,6 +78,13 @@ percentage, time, tray, and shorter media titles. Wider landscape screens also
 show memory history, temperature, network rates, available disk space, and the date.
 The `playerctld` media proxy is hidden because its real player is already shown.
 
+The full bar also shows weather for Kaiserslautern from wttr.in, with conditions
+and Celsius temperature but no city name. It refreshes every ten minutes and
+shows wind in the tooltip. Positive temperatures omit the plus sign. Weather
+text is blue at 0°C or below, white below 20°C, amber below 30°C, and red at
+30°C or above. Click to refresh manually.
+The compact bar does not include weather.
+
 To arrange widgets, edit `fullBar` and `compactBar` in
 `weiss-taffybar/taffybar.hs`. Each layout has plain `startWidgets`,
 `centerWidgets`, and `endWidgets` lists. End widgets are ordered from the right

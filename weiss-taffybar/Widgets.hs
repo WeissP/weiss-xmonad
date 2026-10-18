@@ -12,14 +12,23 @@ module Widgets (
   media,
   mediaCompact,
   network,
+  weather,
   tray,
 ) where
 
+import Control.Exception (try)
 import Control.Monad (forM_, unless)
+import Control.Monad.IO.Class (liftIO)
+import Data.ByteString.Lazy qualified as LazyBytes
+import Data.Char (isDigit)
 import Data.Default (def)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Encoding (decodeUtf8')
+import GI.GLib (markupEscapeText)
 import GI.Gtk qualified as Gtk
+import Network.HTTP.Client (HttpException, Request (checkResponse), httpLbs, newManager, parseRequest, responseBody, throwErrorStatusCodes)
+import Network.HTTP.Client.TLS (tlsManagerSettings)
 import StatusNotifier.Tray qualified as Tray
 import System.Taffybar.Context (TaffyIO)
 import System.Taffybar.Hooks (NetworkInfoChan (..), getNetworkChan)
@@ -31,10 +40,12 @@ import System.Taffybar.Util (postGUIASync)
 import System.Taffybar.Widget
 import System.Taffybar.Widget.Generic.ChannelWidget (channelWidgetNew)
 import System.Taffybar.Widget.Generic.Graph
+import System.Taffybar.Widget.Generic.PollingLabel (pollingLabelWithVariableDelayAndRefresh)
 import System.Taffybar.Widget.Temperature
 import System.Taffybar.Widget.Workspaces qualified as Workspaces
 import System.Taffybar.WidgetPriority (withPriority)
 import Text.Printf (printf)
+import Text.Read (readMaybe)
 import WorkspaceGroups (workspaceGroupsNew)
 
 -- Each action constructs a fresh widget for its bar. Shared widgets need no variant.
@@ -70,6 +81,34 @@ tray =
         { Tray.trayImageSize = Tray.TrayImageSize 24
         , Tray.trayCenterIcons = True
         }
+
+-- Keep the location fixed and show only conditions and temperature on the bar.
+weather :: TaffyIO Gtk.Widget
+weather = withPriority 4 $ card "weather-card" $ do
+  manager <- liftIO $ newManager tlsManagerSettings
+  request <- liftIO $ parseRequest "https://wttr.in/Kaiserslautern?format=%25c%0A%25t%0AWind:+%25w&m&lang=en"
+  let unavailable = pure ("Weather N/A", Just "Weather unavailable; click to retry", 600)
+      update = do
+        result <- try @HttpException $ httpLbs request {checkResponse = throwErrorStatusCodes} manager
+        case result of
+          Left _ -> unavailable
+          Right response -> case decodeUtf8' $ LazyBytes.toStrict $ responseBody response of
+            Right report
+              | [conditions, rawTemperature, wind] <- Text.lines $ Text.strip report
+              , let temperature = Text.dropWhile (== '+') $ Text.strip rawTemperature
+              , Just degrees <- readMaybe @Double $ Text.unpack $ Text.takeWhile (\c -> isDigit c || c == '-' || c == '.') temperature -> do
+                  let color
+                        | degrees <= 0 = "#89b4fa"
+                        | degrees < 20 = "#ffffff"
+                        | degrees < 30 = "#ebc58b"
+                        | otherwise = "#f38ba8"
+                      summary = Text.strip conditions <> " " <> temperature
+                  escaped <- markupEscapeText summary (-1)
+                  let label = "<span foreground='" <> color <> "'>" <> escaped <> "</span>"
+                  tooltip <- markupEscapeText (summary <> "\n" <> wind <> "\nClick to refresh") (-1)
+                  pure (label, Just tooltip, 600)
+            _ -> unavailable
+  pollingLabelWithVariableDelayAndRefresh update True
 
 graphConfig :: GraphConfig
 graphConfig =

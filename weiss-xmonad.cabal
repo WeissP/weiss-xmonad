@@ -133,8 +133,11 @@ executable taffybar
     , directory
     , filepath
     , gi-gdk3
+    , gi-glib
     , gi-gtk3
     , gtk-sni-tray
+    , http-client
+    , http-client-tls
     , taffybar      >=7.4.2
     , text
     , transformers
