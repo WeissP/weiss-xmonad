@@ -11,9 +11,10 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import GI.Gdk qualified as Gdk
 import GI.Gtk qualified as Gtk
-import System.Taffybar.Context (TaffyIO)
+import System.Taffybar.Context (TaffyIO, runX11, subscribeToPropertyEvents, unsubscribe)
 import System.Taffybar.Information.Workspaces.EWMH (getEWMHWorkspaceStateChanAndVar)
 import System.Taffybar.Information.Workspaces.Model
+import System.Taffybar.Information.X11DesktopInfo (readAsString)
 import System.Taffybar.Util (postGUIASync)
 import System.Taffybar.Widget.Generic.ChannelWidget (channelWidgetNew)
 import System.Taffybar.Widget.Util (widgetSetClassGI)
@@ -57,12 +58,14 @@ workspaceGroupsNew showWorkspace = do
                     Nothing -> name
           }
       render snapshot = do
+        -- Read inside the GUI update so queued events always use the latest order.
+        familyOrder <- words <$> runX11 (readAsString Nothing "_WEISS_NUMBERED_FAMILY_ORDER")
         let ordered = snapshotWorkspaces snapshot
             identities = fmap workspaceIdentity ordered
             visible = filter showWorkspace ordered
             presentation =
               [(workspaceIdentity ws, workspaceState ws, workspaceHasUrgentWindow ws) | ws <- visible]
-            signature = (identities, presentation)
+            signature = (identities, presentation, familyOrder)
         old <- liftIO $ readIORef previous
         -- Window-title changes do not change this names-only view.
         when (old /= Just signature) $ do
@@ -76,7 +79,10 @@ workspaceGroupsNew showWorkspace = do
             case members of
               first : _ -> forM_ (numberedFamily first) $ \family -> do
                 void $ widgetSetClassGI group "numbered-workspace-group"
-                void $ widgetSetClassGI group $ "workspace-group-" <> family
+                case elemIndex (Text.unpack family) familyOrder of
+                  Just 0 -> void $ widgetSetClassGI group "family-order-first"
+                  Just 1 -> void $ widgetSetClassGI group "family-order-second"
+                  _ -> pure ()
                 heading <- Gtk.labelNew $ Just family
                 void $ widgetSetClassGI heading "workspace-family-label"
                 Gtk.boxPackStart group heading False False 0
@@ -108,6 +114,9 @@ workspaceGroupsNew showWorkspace = do
             Gtk.containerAdd row group
           Gtk.widgetShowAll row
       update snapshot = postGUIASync $ runReaderT (render snapshot) context
+  subscription <- subscribeToPropertyEvents ["_WEISS_NUMBERED_FAMILY_ORDER"] $ \_ ->
+    liftIO $ readMVar snapshotVar >>= update
+  void $ Gtk.onWidgetDestroy row $ runReaderT (unsubscribe subscription) context
   render =<< liftIO (readMVar snapshotVar)
   void $ Gtk.onWidgetRealize row $ readMVar snapshotVar >>= update
   Gtk.toWidget =<< channelWidgetNew row channel update

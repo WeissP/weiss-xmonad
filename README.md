@@ -99,7 +99,11 @@ Workspace names appear at the left, without window icons. The wide bar shows
 nonempty workspaces; the compact bar shows active, visible, and urgent
 workspaces. Scratchpad workspaces are hidden. Click a name to switch to it.
 Numbered families such as `1.1` and `1.2` share a tightly spaced, tinted group;
-different families have larger gaps.
+different families have larger gaps. The first ordered numbered family is blue,
+the second is green, and the remaining numbered families share a neutral style.
+These accents follow the persistent shortcut order in XMonad and update when
+that order changes. Restart the rebuilt XMonad once to publish the initial order;
+without it, numbered groups use the neutral style.
 The focused workspace has a blue fill; workspaces visible on another screen
 have a teal outline and background.
 XMonad's `pagerHints` supplies visibility on the other screen; rebuild and

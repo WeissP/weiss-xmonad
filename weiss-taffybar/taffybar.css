@@ -83,24 +83,12 @@
 .weiss-bar .numbered-workspace-group .workspace-label {
   font-family: "Noto Sans Mono", monospace;
 }
-.weiss-bar .workspace-group-1 { background-color: #233149; }
-.weiss-bar .workspace-group-2 { background-color: #25382e; }
-.weiss-bar .workspace-group-3 { background-color: #3b3326; }
-.weiss-bar .workspace-group-4 { background-color: #352b40; }
-.weiss-bar .workspace-group-5 { background-color: #243b3c; }
-.weiss-bar .workspace-group-6 { background-color: #3f2c2d; }
-.weiss-bar .workspace-group-7 { background-color: #302f49; }
-.weiss-bar .workspace-group-8 { background-color: #2c3541; }
-.weiss-bar .workspace-group-9 { background-color: #373a27; }
-.weiss-bar .workspace-group-1 .workspace-label { color: @blue; }
-.weiss-bar .workspace-group-2 .workspace-label { color: @green; }
-.weiss-bar .workspace-group-3 .workspace-label { color: @amber; }
-.weiss-bar .workspace-group-4 .workspace-label { color: @pink; }
-.weiss-bar .workspace-group-5 .workspace-label { color: #8cdbd6; }
-.weiss-bar .workspace-group-6 .workspace-label { color: #f0a2a2; }
-.weiss-bar .workspace-group-7 .workspace-label { color: #bcb0f4; }
-.weiss-bar .workspace-group-8 .workspace-label { color: #b0c6df; }
-.weiss-bar .workspace-group-9 .workspace-label { color: #d1d78e; }
+/* Only shortcut order distinguishes numbered families. */
+.weiss-bar .numbered-workspace-group { background-color: #2c3541; }
+.weiss-bar .family-order-first { background-color: #233149; }
+.weiss-bar .family-order-second { background-color: #25382e; }
+.weiss-bar .family-order-first .workspace-label { color: @blue; }
+.weiss-bar .family-order-second .workspace-label { color: @green; }
 
 .weiss-bar .workspaces-card .active .contents { background-color: @blue; }
 .weiss-bar .workspaces-card .workspace-label.active {

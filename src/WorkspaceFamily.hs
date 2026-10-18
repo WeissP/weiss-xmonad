@@ -1,4 +1,4 @@
-module WorkspaceFamily (myWorkspaces, workspaceKeys) where
+module WorkspaceFamily (myWorkspaces, workspaceKeys, publishNumberedFamilyOrder) where
 
 import Control.Monad (when)
 import Control.Monad.Extra (fromMaybeM, pureIf)
@@ -32,6 +32,7 @@ import XMonad.Actions.CycleWS (nextScreen)
 import XMonad.Actions.ShowText (flashText)
 import XMonad.Actions.SwapWorkspaces (swapWithCurrent, swapWorkspaces)
 import XMonad.Actions.WorkspaceNames (getCurrentWorkspaceName, getWorkspaceName)
+import XMonad.Hooks.StatusBar (xmonadPropLog')
 import XMonad.StackSet qualified as W
 import XMonad.Util.EZConfig (parseKey, parseKeyCombo)
 import XMonad.Util.ExtensibleState qualified as XS
@@ -60,7 +61,15 @@ currentNumberedFamily = fromMaybeM (pure $ head allNumberedFamilies) $ runMaybeT
   MaybeT $ pure $ find (`hasWorkspace` ws) allNumberedFamilies
 
 swapOrderedNumFamilies :: NumberedFamily -> NumberedFamily -> X ()
-swapOrderedNumFamilies a b = XS.modify $ \(OrderedNumFamilies fs) -> OrderedNumFamilies $ swapElements a b fs
+swapOrderedNumFamilies a b = when (a /= b) $ do
+  XS.modify $ \(OrderedNumFamilies fs) -> OrderedNumFamilies $ swapElements a b fs
+  publishNumberedFamilyOrder
+
+-- | Share the persistent shortcut order with the independently running bar.
+publishNumberedFamilyOrder :: X ()
+publishNumberedFamilyOrder = do
+  OrderedNumFamilies fs <- XS.get
+  xmonadPropLog' "_WEISS_NUMBERED_FAMILY_ORDER" $ unwords $ fName <$> fs
 
 data LabeledFamily = LabeledFamily FamilyName Key deriving (Show)
 allLabeledFamilies =
