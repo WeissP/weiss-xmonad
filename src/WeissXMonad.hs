@@ -163,6 +163,8 @@ myManageHook =
           , -- , [className =? "vivaldi-stable" --> doShift "览"]
             [className =? "Mattermost" --> doShift "聊2"]
           , [className =? "p3x-onenote" --> doShift "记3"]
+          , [className =? "QQ" <&&> title =? "图片查看器" --> niceFloating]
+          , [className =? "wechat" <&&> title =? "图片和视频" --> niceFloating]
           , [className =? x --> doIgnore | x <- myIgnoreClass]
           , [className =? x --> doHideIgnore | x <- myHideIgnoreClass]
           , [className =? x --> niceFloating | x <- myCenterFloatClass]

@@ -7,6 +7,40 @@ Generated with [template-haskell](https://github.com/jonascarpay/template-haskel
 XMonad runs independently of the status bar. Start Taffybar separately or through
 your desktop services. `Mod-b` toggles the space reserved for docks and bars.
 
+## Workspaces
+
+[WorkspaceFamily.hs](src/WorkspaceFamily.hs) defines nine numbered families
+(`1`–`9`) and labeled families. Each has nine members: numbered workspaces use
+names such as `1.1` and `1.2`; labeled workspaces use `览`, `览2`, …, `览9`.
+Each family remembers its last selected member across XMonad restarts.
+
+All workspace shortcuts are key sequences starting with `<XF86Launch7>`.
+Member/family numbers `1`–`9` map to `m , . j k l u i o`, respectively.
+
+| Keys after `<XF86Launch7>` | Destination |
+| --- | --- |
+| `Return`, number key | Numbered family, at its remembered member |
+| `End`, number key | Member of the current family |
+| `Down` / `h` / `Up` / `y` / `n` / `-` / `0` | Labeled family `览` / `邮` / `媒` / `聊` / `设` / `记` / `NSP` (scratchpads) |
+| `End`, labeled-family key, number key | Specific member of a labeled family |
+| `m , . j k l` | Members 1–6 of the first ordered numbered family |
+| `u i o` | Members 1–3 of the second ordered numbered family |
+
+Numbered-family order starts at `1`–`9`. Selecting a numbered family with
+`Return` exchanges its position with the current numbered family (family `1`
+is the fallback when on a labeled workspace). This order also persists.
+
+Insert an action key before the destination sequence: `Escape` moves the
+focused window, `Space` moves it and follows it (focusing its screen if already
+visible), and `Home` swaps the destination workspace with the current one.
+Without an action key, the sequence switches workspaces, bringing the
+destination onto the current screen if needed. For example,
+`<XF86Launch7> Escape End ,` moves the focused window to member 2 of the
+current family.
+
+Before the action/destination keys, optionally press `<XF86Launch8>` once to
+toggle focus between screens 0 and 1, or twice for screens 0 and 2.
+
 ## Taffybar
 
 Run the independent bar from the repository root, inside `nix develop`:
