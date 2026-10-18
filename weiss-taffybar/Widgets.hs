@@ -87,7 +87,7 @@ weather :: TaffyIO Gtk.Widget
 weather = withPriority 4 $ card "weather-card" $ do
   manager <- liftIO $ newManager tlsManagerSettings
   request <- liftIO $ parseRequest "https://wttr.in/Kaiserslautern?format=%25c%0A%25t%0AWind:+%25w&m&lang=en"
-  let unavailable = pure ("Weather N/A", Just "Weather unavailable; click to retry", 600)
+  let unavailable = pure ("Weather N/A", Just "Weather unavailable; click to retry", 30)
       update = do
         result <- try @HttpException $ httpLbs request {checkResponse = throwErrorStatusCodes} manager
         case result of
@@ -106,7 +106,7 @@ weather = withPriority 4 $ card "weather-card" $ do
                   escaped <- markupEscapeText summary (-1)
                   let label = "<span foreground='" <> color <> "'>" <> escaped <> "</span>"
                   tooltip <- markupEscapeText (summary <> "\n" <> wind <> "\nClick to refresh") (-1)
-                  pure (label, Just tooltip, 600)
+                  pure (label, Just tooltip, 30)
             _ -> unavailable
   pollingLabelWithVariableDelayAndRefresh update True
 
