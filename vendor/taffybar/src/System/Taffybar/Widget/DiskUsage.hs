@@ -21,7 +21,7 @@
 -- @$free$@ and @$available$@ both report space available to unprivileged users
 -- (the @Avail@ value from @df@).
 --
--- Size values are auto-formatted with appropriate units (GiB, TiB, etc.).
+-- Size values are auto-formatted with appropriate units (GB, TB, etc.).
 -- @$availableWhole$@ discards the fractional part of the auto-scaled value.
 module System.Taffybar.Widget.DiskUsage
   ( DiskUsageWidgetConfig (..),
@@ -189,22 +189,22 @@ diskUsageAttrs path info =
 -- | Format available space with whole units, discarding the fractional part.
 formatWholeBytes :: Integer -> String
 formatWholeBytes bytes
-  | bytes >= 1024 ^ (4 :: Int) = whole 4 "TiB"
-  | bytes >= 1024 ^ (3 :: Int) = whole 3 "GiB"
-  | bytes >= 1024 ^ (2 :: Int) = whole 2 "MiB"
-  | otherwise = whole 1 "KiB"
+  | bytes >= 1000 ^ (4 :: Int) = whole 4 "TB"
+  | bytes >= 1000 ^ (3 :: Int) = whole 3 "GB"
+  | bytes >= 1000 ^ (2 :: Int) = whole 2 "MB"
+  | otherwise = whole 1 "KB"
   where
     whole :: Int -> String -> String
-    whole power unit = show (bytes `div` (1024 ^ power)) ++ " " ++ unit
+    whole power unit = show (bytes `div` (1000 ^ power)) ++ " " ++ unit
 
 -- | Format a byte count with auto-scaled units.
 formatBytes :: Integer -> String
 formatBytes bytes
-  | gb >= 1024 = printf "%.1f TiB" (gb / 1024 :: Double)
-  | gb >= 1 = printf "%.1f GiB" gb
-  | mb >= 1 = printf "%.0f MiB" mb
-  | otherwise = printf "%.0f KiB" kb
+  | gb >= 1000 = printf "%.1f TB" (gb / 1000 :: Double)
+  | gb >= 1 = printf "%.1f GB" gb
+  | mb >= 1 = printf "%.0f MB" mb
+  | otherwise = printf "%.0f KB" kb
   where
-    kb = fromIntegral bytes / 1024 :: Double
-    mb = kb / 1024
-    gb = mb / 1024
+    kb = fromIntegral bytes / 1000 :: Double
+    mb = kb / 1000
+    gb = mb / 1000

@@ -192,22 +192,22 @@ memoryText :: MemoryInfo -> Text
 memoryText info =
   Text.pack $
     printf
-      "RAM %.0f/%.0f GiB • SWAP %.0f/%.0f GiB"
-      (memoryUsed info / 1024)
-      (memoryTotal info / 1024)
-      (memorySwapUsed info / 1024)
-      (memorySwapTotal info / 1024)
+      "RAM %.0f/%.0f GB • SWAP %.0f/%.0f GB"
+      (memoryUsed info * 1024 * 1024 / 1000000000)
+      (memoryTotal info * 1024 * 1024 / 1000000000)
+      (memorySwapUsed info * 1024 * 1024 / 1000000000)
+      (memorySwapTotal info * 1024 * 1024 / 1000000000)
 
 memoryTooltip :: MemoryInfo -> Text
 memoryTooltip info =
   Text.pack $
     printf
-      "RAM used: %.0f KiB\nRAM total: %.0f KiB\nRAM available: %.0f KiB\nSwap used: %.0f KiB\nSwap total: %.0f KiB\nValues on the bar are used / total."
-      (memoryUsed info * 1024)
-      (memoryTotal info * 1024)
-      (memoryAvailable info * 1024)
-      (memorySwapUsed info * 1024)
-      (memorySwapTotal info * 1024)
+      "RAM used: %.0f MB\nRAM total: %.0f MB\nRAM available: %.0f MB\nSwap used: %.0f MB\nSwap total: %.0f MB\nValues on the bar are used / total."
+      (memoryUsed info * 1024 * 1024 / 1000000)
+      (memoryTotal info * 1024 * 1024 / 1000000)
+      (memoryAvailable info * 1024 * 1024 / 1000000)
+      (memorySwapUsed info * 1024 * 1024 / 1000000)
+      (memorySwapTotal info * 1024 * 1024 / 1000000)
 
 memoryWidget :: Bool -> TaffyIO Gtk.Widget
 memoryWidget compact = do
@@ -299,7 +299,7 @@ network = withPriority 5 $ do
         Gtk.imageSetPixelSize icon 18
         Gtk.widgetSetValign icon Gtk.AlignCenter
         _ <- widgetSetClassGI icon "network-arrow"
-        value <- Gtk.labelNew $ Just "0B/s"
+        value <- Gtk.labelNew $ Just "0MB/s"
         -- Reserve ten monospace characters even when the displayed unit changes.
         Gtk.labelSetWidthChars value 10
         Gtk.labelSetMaxWidthChars value 10
@@ -314,11 +314,19 @@ network = withPriority 5 $ do
   downstream <- block "network-down" "go-down-symbolic" "Download speed"
   upstream <- block "network-up" "go-up-symbolic" "Upload speed"
   _ <- widgetSetClassGI row "network-card"
-  let update speedInfo = postGUIASync $ do
+  let formatSpeed speed
+        | speed <= 300000 = "0MB/s"
+        | otherwise = Text.pack $ printf "%.2f%s" (fromRational speed / divisor :: Double) unit
+        where
+          (divisor, unit)
+            | speed >= 1000000000000 = (1000000000000, "TB/s" :: String)
+            | speed >= 1000000000 = (1000000000, "GB/s")
+            | otherwise = (1000000, "MB/s")
+      update speedInfo = postGUIASync $ do
         -- Match the vendored network monitor's transmit/receive ordering.
         let (outgoing, incoming) = sumSpeeds $ fmap snd speedInfo
-        Gtk.labelSetText downstream $ Text.pack $ toAuto 3 $ fromRational incoming
-        Gtk.labelSetText upstream $ Text.pack $ toAuto 3 $ fromRational outgoing
+        Gtk.labelSetText downstream $ formatSpeed incoming
+        Gtk.labelSetText upstream $ formatSpeed outgoing
   Gtk.toWidget =<< channelWidgetNew row channel update
 
 clockFor :: Bool -> TaffyIO Gtk.Widget
