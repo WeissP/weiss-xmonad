@@ -136,7 +136,7 @@ initial order; without it, all groups remain unmarked.
 XMonad's `pagerHints` supplies visibility on the other screen; rebuild and
 restart XMonad as well as Taffybar when first enabling these hints.
 
-The dark theme in `weiss-taffybar/taffybar.css` is installed with the executable.
+The dark theme in `weiss-taffybar/assets/taffybar.css` is installed with the executable.
 During development, edits to this file reload automatically. Personal overrides
 can go in `$XDG_CONFIG_HOME/taffybar/taffybar.css` (usually
 `~/.config/taffybar/taffybar.css`), which loads after the bundled theme and also

@@ -11,7 +11,8 @@ tested-with:     GHC ==9.6.6
 extra-doc-files:
   CHANGELOG.md
   README.md
-data-files:      weiss-taffybar/taffybar.css
+extra-source-files: weiss-taffybar/assets/wechat.png
+data-files:         weiss-taffybar/assets/taffybar.css
 
 -- category:
 -- description:     description
@@ -131,13 +132,16 @@ executable taffybar
     , bytestring
     , data-default
     , directory
+    , file-embed
     , filepath
     , gi-gdk3
+    , gi-gdkpixbuf
     , gi-glib
     , gi-gtk3
     , gtk-sni-tray
     , http-client
     , http-client-tls
+    , status-notifier-item
     , taffybar      >=7.4.2
     , text
     , transformers

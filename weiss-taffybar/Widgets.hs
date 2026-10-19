@@ -16,19 +16,24 @@ module Widgets (
   tray,
 ) where
 
-import Control.Exception (try)
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
+import Control.Exception (evaluate, try)
 import Control.Monad (forM_, unless)
 import Control.Monad.IO.Class (liftIO)
+import Data.ByteString qualified as Bytes
 import Data.ByteString.Lazy qualified as LazyBytes
 import Data.Char (isDigit)
 import Data.Default (def)
+import Data.FileEmbed (embedFile)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8')
 import GI.GLib (markupEscapeText)
+import GI.GdkPixbuf qualified as Pixbuf
 import GI.Gtk qualified as Gtk
 import Network.HTTP.Client (HttpException, Request (checkResponse), httpLbs, newManager, parseRequest, responseBody, throwErrorStatusCodes)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
+import StatusNotifier.Host.Service qualified as SNI
 import StatusNotifier.Tray qualified as Tray
 import System.Taffybar.Context (TaffyIO)
 import System.Taffybar.Hooks (NetworkInfoChan (..), getNetworkChan)
@@ -75,12 +80,62 @@ mediaCompact = mediaFor True
 
 tray :: TaffyIO Gtk.Widget
 tray =
-  card "tray-card" $
-    sniTrayNewFromParams
+  card "tray-card" $ do
+    host <- getTrayHost False
+    wechatIcon <- liftIO $ newMVar Nothing
+    let transformItem = transformTrayItem wechatIcon
+        transformedHost =
+          host
+            { SNI.itemInfoMap = SNI.itemInfoMap host >>= traverse transformItem
+            , SNI.addUpdateHandler = \handler ->
+                SNI.addUpdateHandler host $ \update info ->
+                  transformItem info >>= handler update
+            }
+    sniTrayNewFromHostParams
       Tray.defaultTrayParams
         { Tray.trayImageSize = Tray.TrayImageSize 24
         , Tray.trayCenterIcons = True
         }
+      transformedHost
+
+-- Apply per-application rules to both initial tray items and later updates.
+transformTrayItem :: MVar (Maybe SNI.ImageInfo) -> SNI.ItemInfo -> IO SNI.ItemInfo
+transformTrayItem wechatIcon info
+  | SNI.itemId info == Just "wechat" = do
+      pixmaps <- cachedWeChatIcon wechatIcon
+      pure $
+        info
+          { SNI.iconName = ""
+          , SNI.iconThemePath = Nothing
+          , SNI.iconPixmaps = pixmaps
+          , SNI.overlayIconName = Nothing
+          , SNI.overlayIconPixmaps = []
+          }
+  | otherwise = pure info
+
+wechatPng :: Bytes.ByteString
+wechatPng = $(embedFile "weiss-taffybar/assets/wechat.png")
+
+-- Decode the embedded PNG once per tray, including simultaneous initial updates.
+cachedWeChatIcon :: MVar (Maybe SNI.ImageInfo) -> IO SNI.ImageInfo
+cachedWeChatIcon wechatIcon = modifyMVar wechatIcon $ \cached ->
+  case cached of
+    Just pixmaps -> pure (cached, pixmaps)
+    Nothing -> do
+      loader <- Pixbuf.pixbufLoaderNewWithType "png"
+      Pixbuf.pixbufLoaderWrite loader wechatPng
+      Pixbuf.pixbufLoaderClose loader
+      original <- Pixbuf.pixbufLoaderGetPixbuf loader >>= maybe (fail "Cannot decode embedded WeChat icon") pure
+      rgba <- Pixbuf.pixbufAddAlpha original False 0 0 0 >>= maybe (fail "Cannot add alpha to WeChat icon") pure
+      width <- Pixbuf.pixbufGetWidth rgba
+      height <- Pixbuf.pixbufGetHeight rgba
+      stride <- fromIntegral <$> Pixbuf.pixbufGetRowstride rgba
+      pixels <- Pixbuf.pixbufGetPixels rgba
+      -- SNI's host-side pixmaps use tightly packed RGBA; discard row padding
+      -- and copy the bytes so they outlive the temporary GdkPixbuf.
+      packed <- evaluate $ Bytes.copy $ Bytes.concat [Bytes.take (fromIntegral width * 4) $ Bytes.drop (row * stride) pixels | row <- [0 .. fromIntegral height - 1]]
+      let pixmaps = [(width, height, packed)]
+      pure (Just pixmaps, pixmaps)
 
 -- Keep the location fixed and show only conditions and temperature on the bar.
 weather :: TaffyIO Gtk.Widget
@@ -103,8 +158,9 @@ weather = withPriority 4 $ card "weather-card" $ do
                         | degrees < 30 = "#ebc58b"
                         | otherwise = "#f38ba8"
                       summary = Text.strip conditions <> " " <> temperature
-                  escaped <- markupEscapeText summary (-1)
-                  let label = "<span foreground='" <> color <> "'>" <> escaped <> "</span>"
+                  icon <- markupEscapeText (Text.strip conditions) (-1)
+                  escapedTemperature <- markupEscapeText temperature (-1)
+                  let label = "<span foreground='" <> color <> "'><span size='12288'>" <> icon <> "</span> " <> escapedTemperature <> "</span>"
                   tooltip <- markupEscapeText (summary <> "\n" <> wind <> "\nClick to refresh") (-1)
                   pure (label, Just tooltip, 30)
             _ -> unavailable

@@ -74,7 +74,7 @@ taffybarConfig stylesheets =
 
 main :: IO ()
 main = do
-  theme <- getDataFileName "weiss-taffybar/taffybar.css"
+  theme <- getDataFileName "weiss-taffybar/assets/taffybar.css"
   userTheme <- getTaffyFile "taffybar.css"
   createDirectoryIfMissing True $ takeDirectory userTheme
   startTaffybar $ taffybarConfig [theme, userTheme]
