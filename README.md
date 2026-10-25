@@ -66,45 +66,40 @@ services.taffybar = {
 
 Home Manager can use its standard `${cfg.package}/bin/taffybar` command.
 
-The bar shows CPU history, RAM and swap used/total in GiB, root filesystem usage,
-temperature, network transfer rates, tray icons, and media controls. Memory
+Available widgets include CPU history, RAM and swap used/total in GiB, root
+filesystem usage, temperature, network transfer rates, weather, tray icons, and
+media controls. Memory
 values update every two seconds; its tooltip includes exact KiB values.
 Hover memory or disk usage for details; click disk usage to refresh it. Click
 the clock to open its calendar. Optional widgets hide when space is limited.
 
-Each monitor chooses its layout from its geometry. Portrait screens and screens
-narrower than 1600 logical pixels show a compact bar with CPU, memory, disk
-percentage, time, tray, and shorter media titles. Wider landscape screens also
-show memory history, temperature, network rates, available disk space, and the date.
+The layout is chosen by a command-line argument, `taffybar [mini|desktop|default]`
+(no argument means `default`). For example,
+`cabal run weiss-xmonad:exe:taffybar -- mini`. Each profile assigns bars to
+xrandr output names (the screens in `nix-config/nixos/common/autorandr.nix`),
+such as `HDMI-1` or `DP-5`. Screens that are not listed use the profile's
+fallback bar, or get no bar if it has none; `default` has only a fallback.
 The `playerctld` media proxy is hidden because its real player is already shown.
 
-The full bar also shows weather for Kaiserslautern from wttr.in, with conditions
+The weather widget shows Kaiserslautern from wttr.in, with conditions
 and Celsius temperature but no city name. It refreshes every ten minutes and
 shows wind in the tooltip. Positive temperatures omit the plus sign. Weather
 text is blue at 0°C or below, white below 20°C, amber below 30°C, and red at
 30°C or above. Click to refresh manually.
-The compact bar does not include weather.
 
-To arrange widgets, edit `fullBar` and `compactBar` in
-`weiss-taffybar/taffybar.hs`. Each layout has plain `startWidgets`,
+To arrange widgets, edit `profileBars` and `profileFallback` in
+`weiss-taffybar/taffybar.hs`. Each bar has plain `startWidgets`,
 `centerWidgets`, and `endWidgets` lists. End widgets are ordered from the right
-edge inward. For example:
-
-```haskell
-startWidgets = [workspacesCompact, cpuCompact, memoryCompact, diskCompact]
-endWidgets = [tray, mediaCompact]
-```
+edge inward.
 
 Configure the named widgets in `weiss-taffybar/Widgets.hs`. Widgets with two
 styles expose both names, such as `cpu` and `cpuCompact`; shared widgets such as
-`tray` and `network` work in either layout. The lists choose the style explicitly,
-so a full widget can also be used in the compact bar. Widget definitions use
-`withPriority` to mark optional widgets when space is limited. Shared bar appearance is in `defBar`;
-monitor geometry selection remains separate from the widget lists.
+`tray` and `network` have one style. Any widget can be used in any bar. Widget
+definitions use `withPriority` to mark optional widgets when space is limited.
+Shared bar appearance is in `defBar`.
 
-Workspace names appear at the left, without window icons. The wide bar shows
-nonempty workspaces; the compact bar shows active, visible, and urgent
-workspaces. Scratchpad workspaces are hidden. Click a name to switch to it.
+Workspace names appear without window icons. `workspaces` shows nonempty
+workspaces; `workspacesCompact` shows active, visible, and urgent workspaces. Scratchpad workspaces are hidden. Click a name to switch to it.
 Numbered families such as `1.1` and `1.2` share a tightly spaced group;
 different families have larger gaps. All groups use the same neutral background.
 When a numbered Chinese member is shown, its family gets a shared heading and

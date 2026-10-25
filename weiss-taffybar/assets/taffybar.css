@@ -186,11 +186,6 @@
 .weiss-bar .mpris-control:active { background-color: #31435f; }
 .weiss-bar .mpris-control:disabled label { color: @muted; }
 
-.weiss-compact .contents { padding: 0 7px; }
-.weiss-compact .clock-card .contents { padding: 0 4px; }
-.weiss-compact .mpris-controls { padding-left: 4px; }
-.weiss-compact .mpris-control { padding: 0 5px; }
-
 tooltip {
   background-color: @bar-bg;
   color: @bar-fg;
