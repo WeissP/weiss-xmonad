@@ -76,7 +76,17 @@
         // {
           packages = {
             default = flake.packages."weiss-xmonad:exe:weiss-xmonad-exe";
-            weiss-taffybar = flake.packages."weiss-xmonad:exe:taffybar";
+            # Without a loader cache, GdkPixbuf cannot read SVG, so icons such
+            # as the media widget's fallback play.svg render blank.
+            weiss-taffybar = pkgs.symlinkJoin {
+              name = "weiss-taffybar";
+              paths = [ flake.packages."weiss-xmonad:exe:taffybar" ];
+              nativeBuildInputs = [ pkgs.makeWrapper ];
+              postBuild = ''
+                wrapProgram $out/bin/taffybar \
+                  --set-default GDK_PIXBUF_MODULE_FILE ${pkgs.librsvg}/${pkgs.gdk-pixbuf.moduleDir}.cache
+              '';
+            };
           };
           devShells = {
             default = shellWithToml [ ];
