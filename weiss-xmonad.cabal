@@ -130,7 +130,9 @@ executable taffybar
   build-depends:
     , base
     , bytestring
+    , containers
     , data-default
+    , dbus
     , directory
     , file-embed
     , filepath
@@ -138,6 +140,7 @@ executable taffybar
     , gi-gdkpixbuf
     , gi-glib
     , gi-gtk3
+    , gi-pango
     , gtk-sni-tray
     , http-client
     , http-client-tls

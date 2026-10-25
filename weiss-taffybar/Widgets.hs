@@ -15,21 +15,30 @@ module Widgets (
   tray,
 ) where
 
-import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
+import Control.Applicative ((<|>))
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Control.Exception (evaluate, try)
-import Control.Monad (forM_, unless)
+import Control.Monad (forM_, join, mfilter, unless, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString qualified as Bytes
 import Data.ByteString.Lazy qualified as LazyBytes
 import Data.Char (isDigit)
 import Data.Default (def)
+import DBus (BusName)
 import Data.FileEmbed (embedFile)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
+import Data.List (elemIndex)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8')
 import GI.GLib (markupEscapeText)
+import GI.Gdk qualified as Gdk
 import GI.GdkPixbuf qualified as Pixbuf
 import GI.Gtk qualified as Gtk
+import GI.Pango qualified as Pango
 import Network.HTTP.Client (HttpException, Request (checkResponse), httpLbs, newManager, parseRequest, responseBody, throwErrorStatusCodes)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import StatusNotifier.Host.Service qualified as SNI
@@ -233,17 +242,37 @@ memoryWidget compact = do
 card :: Text -> TaffyIO Gtk.Widget -> TaffyIO Gtk.Widget
 card name widget = widget >>= buildContentsBox >>= (`widgetSetClassGI` name)
 
+-- The card shows one player; the toggle button cycles through the rest.
+-- Playback buttons appear over the title only while the pointer is over the
+-- card. They overlay the title instead of taking space: resizing on hover makes
+-- priority hiding move the card away from the pointer, flipping the hover state
+-- in a loop.
+data MediaState = MediaState
+  { mediaHovered :: Bool
+  , mediaPlaying :: [BusName]
+  , mediaToggleLabel :: Text
+  , mediaPrimary :: Maybe BusName
+  , mediaRows :: Map BusName (NowPlaying, Gtk.Widget, Maybe Gtk.Widget)
+  }
+
 -- playerctld proxies a real player; rendering both duplicates the same media.
-mediaPlayer :: Bool -> UpdateMPRIS2PlayerWidget MPRIS2PlayerControlsWidget
-mediaPlayer compact add existing nowPlaying = do
+listedPlayer :: NowPlaying -> Bool
+listedPlayer info =
+  npStatus info /= "Stopped"
+    && npBusName info /= "org.mpris.MediaPlayer2.playerctld"
+
+mediaPlayer :: Bool -> IORef MediaState -> Gtk.Button -> UpdateMPRIS2PlayerWidget MPRIS2PlayerControlsWidget
+mediaPlayer compact stateRef toggle add existing nowPlaying = do
   player <-
     simplePlayerWidgetWithControls
       def
-        { setNowPlayingLabel = if compact then playingText 8 14 else playingText 12 24
-        , showPlayerWidgetFn = \info ->
-            pure $
-              npStatus info /= "Stopped"
-                && npBusName info /= "org.mpris.MediaPlayer2.playerctld"
+        { -- Cap the card by the label's width rather than by character counts,
+          -- so wide (e.g. CJK) titles take no more room than Latin ones.
+          setNowPlayingLabel = playingText maxBound maxBound
+        , setupPlayerLabel = \label -> do
+            Gtk.labelSetEllipsize label Pango.EllipsizeModeEnd
+            Gtk.labelSetMaxWidthChars label $ if compact then 20 else 36
+        , showPlayerWidgetFn = pure . listedPlayer
         }
       add
       existing
@@ -251,7 +280,79 @@ mediaPlayer compact add existing nowPlaying = do
   Gtk.widgetSetTooltipText (controlsPreviousButton player) $ Just "Previous track"
   Gtk.widgetSetTooltipText (controlsPlayPauseButton player) $ Just "Play / pause"
   Gtk.widgetSetTooltipText (controlsNextButton player) $ Just "Next track"
+  liftIO $ do
+    -- The widget keeps its last state, which names the player even after it exits.
+    bus <- npBusName <$> readMVar (controlsNowPlayingVar player)
+    controls <- Gtk.widgetGetParent $ controlsPreviousButton player
+    when (isNothing existing) $ forM_ controls $ overlayControls player
+    let updateRows = case nowPlaying of
+          Just info | listedPlayer info -> Map.insert bus (info, controlsPlayerWidget player, controls)
+          _ -> Map.delete bus
+    modifyIORef' stateRef $ \state -> state {mediaRows = updateRows $ mediaRows state}
+    applyMediaState stateRef toggle
   pure player
+
+-- Move the playback buttons from beside the title onto its text, leaving the
+-- player icon uncovered.
+overlayControls :: MPRIS2PlayerControlsWidget -> Gtk.Widget -> IO ()
+overlayControls player controls = do
+  let label = controlsPlayerLabel player
+  clickArea <- join <$> (traverse (Gtk.castTo Gtk.Box) =<< Gtk.widgetGetParent label)
+  playerBox <- Gtk.castTo Gtk.Box $ controlsPlayerWidget player
+  forM_ ((,) <$> clickArea <*> playerBox) $ \(area, box) -> do
+    Gtk.containerRemove box controls
+    Gtk.containerRemove area label
+    -- Gap between the player icon and the title.
+    Gtk.boxSetSpacing area 6
+    overlay <- Gtk.overlayNew
+    Gtk.containerAdd overlay label
+    Gtk.overlayAddOverlay overlay controls
+    Gtk.widgetSetHalign controls Gtk.AlignEnd
+    Gtk.widgetSetValign controls Gtk.AlignCenter
+    Gtk.boxPackStart area overlay True True 0
+    Gtk.widgetShow overlay
+
+-- Switch when a player starts playing or the shown one stops, but only on those
+-- transitions, so a paused player picked with the toggle stays shown.
+applyMediaState :: IORef MediaState -> Gtk.Button -> IO ()
+applyMediaState stateRef toggle = do
+  state <- readIORef stateRef
+  let rows = mediaRows state
+      buses = Map.keys rows
+      playing = Map.keys $ Map.filter (\(info, _, _) -> npStatus info == "Playing") rows
+      started = filter (`notElem` mediaPlaying state) playing
+      current = mfilter (`Map.member` rows) $ mediaPrimary state
+      stopped = maybe False (\bus -> bus `elem` mediaPlaying state && bus `notElem` playing) current
+      primary
+        | bus : _ <- started = Just bus
+        | stopped, bus : _ <- playing = Just bus
+        | otherwise = current <|> listToMaybe playing <|> listToMaybe buses
+      position = maybe 0 (+ 1) $ (`elemIndex` buses) =<< primary
+      label = Text.pack $ show position <> "/" <> show (length buses)
+  writeIORef stateRef state {mediaPrimary = primary, mediaPlaying = playing, mediaToggleLabel = label}
+  forM_ (Map.toList rows) $ \(bus, (_, row, controls)) -> do
+    Gtk.widgetSetVisible row $ Just bus == primary
+    forM_ controls $ \box -> do
+      -- Fade the buttons rather than hide them: GTK measures hidden widgets as
+      -- zero wide. While invisible, clicks pass through to the title.
+      Gtk.widgetSetOpacity box $ if mediaHovered state then 1 else 0
+      overlay <- join <$> (traverse (Gtk.castTo Gtk.Overlay) =<< Gtk.widgetGetParent box)
+      forM_ overlay $ \parent -> do
+        Gtk.overlaySetOverlayPassThrough parent box $ not $ mediaHovered state
+        -- Overlays don't affect the card's size, so keep short titles wide
+        -- enough to fit the buttons.
+        (_, width) <- Gtk.widgetGetPreferredWidth box
+        Gtk.widgetSetSizeRequest parent width (-1)
+  -- Relabeling queues a resize, so skip it when the text is unchanged.
+  unless (mediaToggleLabel state == label) $ Gtk.buttonSetLabel toggle label
+  Gtk.widgetSetVisible toggle $ length buses > 1
+
+-- Advance to the player after the shown one, wrapping around.
+nextMediaPlayer :: MediaState -> MediaState
+nextMediaPlayer state = state {mediaPrimary = listToMaybe $ after <> buses}
+  where
+    buses = Map.keys $ mediaRows state
+    after = maybe buses (\bus -> drop 1 $ dropWhile (/= bus) buses) $ mediaPrimary state
 
 showWorkspace :: Bool -> WorkspaceInfo -> Bool
 showWorkspace compact workspace =
@@ -345,10 +446,46 @@ clockFor compact =
         }
 
 mediaFor :: Bool -> TaffyIO Gtk.Widget
-mediaFor compact =
-  withPriority 2 $
-    mpris2NewWithConfig
-      defaultMPRIS2ControlsConfig
-        { mprisWidgetWrapper = (`widgetSetClassGI` "media-card")
-        , updatePlayerWidget = mediaPlayer compact
-        }
+mediaFor compact = withPriority 2 $ do
+  stateRef <-
+    liftIO $
+      newIORef
+        MediaState {mediaHovered = False, mediaPlaying = [], mediaToggleLabel = "", mediaPrimary = Nothing, mediaRows = Map.empty}
+  toggle <- Gtk.buttonNew
+  Gtk.widgetSetTooltipText toggle $ Just "Next player"
+  -- Visibility follows the player count, not a parent's show-all.
+  Gtk.widgetSetNoShowAll toggle True
+  _ <- widgetSetClassGI toggle "mpris-control"
+  _ <- widgetSetClassGI toggle "media-toggle"
+  _ <- Gtk.onButtonClicked toggle $ do
+    modifyIORef' stateRef nextMediaPlayer
+    applyMediaState stateRef toggle
+  mpris2NewWithConfig
+    defaultMPRIS2ControlsConfig
+      { mprisWidgetWrapper = \players -> do
+          Gtk.castTo Gtk.Grid players >>= mapM_ (`Gtk.gridSetColumnSpacing` 14)
+          row <- Gtk.boxNew Gtk.OrientationHorizontal 0
+          Gtk.boxPackStart row players False False 0
+          Gtk.boxPackStart row toggle False False 0
+          _ <- widgetSetClassGI row "media-card"
+          hover <- Gtk.eventBoxNew
+          -- A real window parents the buttons, so leaving onto them reports NotifyInferior.
+          Gtk.eventBoxSetVisibleWindow hover True
+          Gtk.containerAdd hover row
+          -- Resizing the card under the pointer emits crossing events; ignore no-ops.
+          let setHovered hovered = do
+                state <- readIORef stateRef
+                unless (mediaHovered state == hovered) $ do
+                  writeIORef stateRef state {mediaHovered = hovered}
+                  applyMediaState stateRef toggle
+          _ <- Gtk.onWidgetEnterNotifyEvent hover $ \_ -> setHovered True >> pure False
+          _ <- Gtk.onWidgetLeaveNotifyEvent hover $ \event -> do
+            -- Moving onto a button or label is still inside the card.
+            detail <- Gdk.getEventCrossingDetail event
+            unless (detail == Gdk.NotifyTypeInferior) $ setHovered False
+            pure False
+          Gtk.widgetShow row
+          Gtk.widgetShow hover
+          widgetSetClassGI hover "media-hover" >>= Gtk.toWidget
+      , updatePlayerWidget = mediaPlayer compact stateRef toggle
+      }

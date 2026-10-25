@@ -145,20 +145,25 @@ window.weiss-bar { background-color: transparent; }
 .weiss-bar .auto-size-image { padding: 1px 0; }
 .weiss-bar .sni-tray { padding: 0; }
 
-.weiss-bar .media-card.visible-children {
+.weiss-bar .media-hover { background-color: transparent; }
+
+.weiss-bar .media-hover.visible-children > .media-card {
   background-color: @card-bg;
   border-radius: 8px;
   margin: 2px 0;
   padding: 0 8px;
 }
 
-.weiss-bar .media-card.no-visible-children {
+.weiss-bar .media-hover.no-visible-children > .media-card {
   background-color: transparent;
   margin: 0;
   padding: 0;
 }
 
-.weiss-bar .mpris-controls { padding-left: 8px; }
+.weiss-bar .mpris-controls {
+  background-color: @card-bg;
+  padding-left: 6px;
+}
 .weiss-bar .mpris-control {
   background-color: #40577b;
   background-image: none;
@@ -188,6 +193,27 @@ window.weiss-bar { background-color: transparent; }
 
 .weiss-bar .mpris-control:active { background-color: #31435f; }
 .weiss-bar .mpris-control:disabled label { color: @muted; }
+.weiss-bar .media-toggle {
+  background-color: transparent;
+  border-color: transparent;
+  margin-left: 4px;
+  padding: 0 3px;
+}
+
+.weiss-bar .media-toggle label {
+  color: @muted;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 8pt;
+  font-weight: normal;
+}
+
+.weiss-bar .media-toggle:hover,
+.weiss-bar .media-toggle:focus {
+  background-color: #40577b;
+  border-color: #6c87b0;
+}
+
+.weiss-bar .media-toggle:hover label { color: #ffffff; }
 
 tooltip {
   background-color: @bar-bg;
