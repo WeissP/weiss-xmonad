@@ -140,10 +140,19 @@ window.weiss-bar { background-color: transparent; }
   letter-spacing: 0.5px;
 }
 
-.weiss-bar .tray-card .contents { padding: 0 6px; }
+.weiss-bar .tray-card .contents {
+  /* No card behind the tray: the icons sit directly on the desktop. */
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0 6px;
+}
 
 .weiss-bar .auto-size-image { padding: 1px 0; }
 .weiss-bar .sni-tray { padding: 0; }
+/* Gap between tray icons only, so the outer padding stays as is. The icon's
+   event box ignores CSS margin in GTK 3, so space the image inside it. */
+.weiss-bar .tray-icon-button + .tray-icon-button .tray-icon-image { margin-left: 2px; }
 
 .weiss-bar .media-hover { background-color: transparent; }
 
