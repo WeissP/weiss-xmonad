@@ -180,32 +180,36 @@ cpuConfig =
     { graphDataColors = [(0.65, 0.85, 0.63, 0.6), (0.58, 0.89, 0.84, 0.9)]
     , graphLabel = Just "CPU"
     }
+-- The frame marks 100%, so the fill height reads as a rough percentage.
 memoryConfig =
   graphConfig
     { graphDataColors = [(0.54, 0.71, 0.98, 0.65)]
     , graphWidth = 48
+    , graphPadding = 1
+    , graphBorderWidth = 1
+    , graphBorderColor = (0.6, 0.65, 0.74, 0.7)
+    , graphBackgroundColor = (1, 1, 1, 0.04)
     }
 
+-- Swap shows only in the tooltip, keeping the card narrow.
 memoryText :: MemoryInfo -> Text
 memoryText info =
   Text.pack $
     printf
-      "RAM %.0f/%.0f GB • SWAP %.0f/%.0f GB"
+      "RAM %.0f/%.0f GB"
       (memoryUsed info * 1024 * 1024 / 1000000000)
       (memoryTotal info * 1024 * 1024 / 1000000000)
-      (memorySwapUsed info * 1024 * 1024 / 1000000000)
-      (memorySwapTotal info * 1024 * 1024 / 1000000000)
 
 memoryTooltip :: MemoryInfo -> Text
 memoryTooltip info =
   Text.pack $
     printf
-      "RAM used: %.0f MB\nRAM total: %.0f MB\nRAM available: %.0f MB\nSwap used: %.0f MB\nSwap total: %.0f MB\nValues on the bar are used / total."
-      (memoryUsed info * 1024 * 1024 / 1000000)
-      (memoryTotal info * 1024 * 1024 / 1000000)
-      (memoryAvailable info * 1024 * 1024 / 1000000)
-      (memorySwapUsed info * 1024 * 1024 / 1000000)
-      (memorySwapTotal info * 1024 * 1024 / 1000000)
+      "RAM used: %.2f GB\nRAM total: %.2f GB\nRAM available: %.2f GB\nSwap used: %.2f GB\nSwap total: %.2f GB."
+      (memoryUsed info * 1024 * 1024 / 1000000000)
+      (memoryTotal info * 1024 * 1024 / 1000000000)
+      (memoryAvailable info * 1024 * 1024 / 1000000000)
+      (memorySwapUsed info * 1024 * 1024 / 1000000000)
+      (memorySwapTotal info * 1024 * 1024 / 1000000000)
 
 memoryWidget :: Bool -> TaffyIO Gtk.Widget
 memoryWidget compact = do
