@@ -136,7 +136,7 @@ cachedWeChatIcon wechatIcon = modifyMVar wechatIcon $ \cached ->
 weather :: TaffyIO Gtk.Widget
 weather = withPriority 4 $ card "weather-card" $ do
   manager <- liftIO $ newManager tlsManagerSettings
-  request <- liftIO $ parseRequest "https://wttr.in/Kaiserslautern?format=%25c%0A%25t%0AWind:+%25w&m&lang=en"
+  request <- liftIO $ parseRequest "https://wttr.in/Kaiserslautern?format=%25c%0A%25t%0AWind:+%25w%0A%25S%0A%25s&m&lang=en"
   let unavailable = pure ("Weather N/A", Just "Weather unavailable; click to retry", 30)
       update = do
         result <- try @HttpException $ httpLbs request {checkResponse = throwErrorStatusCodes} manager
@@ -144,7 +144,7 @@ weather = withPriority 4 $ card "weather-card" $ do
           Left _ -> unavailable
           Right response -> case decodeUtf8' $ LazyBytes.toStrict $ responseBody response of
             Right report
-              | [conditions, rawTemperature, wind] <- Text.lines $ Text.strip report
+              | [conditions, rawTemperature, wind, sunrise, sunset] <- Text.lines $ Text.strip report
               , let temperature = Text.dropWhile (== '+') $ Text.strip rawTemperature
               , Just degrees <- readMaybe @Double $ Text.unpack $ Text.takeWhile (\c -> isDigit c || c == '-' || c == '.') temperature -> do
                   let color
@@ -153,10 +153,13 @@ weather = withPriority 4 $ card "weather-card" $ do
                         | degrees < 30 = "#ebc58b"
                         | otherwise = "#f38ba8"
                       summary = Text.strip conditions <> " " <> temperature
+                      -- wttr.in reports local HH:MM:SS; seconds are noise here.
+                      clock = Text.take 5 . Text.strip
+                      sun = "Sunrise: " <> clock sunrise <> "\nSunset: " <> clock sunset
                   icon <- markupEscapeText (Text.strip conditions) (-1)
                   escapedTemperature <- markupEscapeText temperature (-1)
                   let label = "<span foreground='" <> color <> "'><span size='12288'>" <> icon <> "</span> " <> escapedTemperature <> "</span>"
-                  tooltip <- markupEscapeText (summary <> "\n" <> wind <> "\nClick to refresh") (-1)
+                  tooltip <- markupEscapeText (summary <> "\n" <> wind <> "\n" <> sun <> "\nClick to refresh") (-1)
                   pure (label, Just tooltip, 30)
             _ -> unavailable
   pollingLabelWithVariableDelayAndRefresh update True
