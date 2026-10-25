@@ -6,7 +6,6 @@ module Widgets (
   memory,
   memoryCompact,
   disk,
-  diskCompact,
   clock,
   clockCompact,
   media,
@@ -65,10 +64,6 @@ cpuCompact = cpuFor True
 memory, memoryCompact :: TaffyIO Gtk.Widget
 memory = memoryFor False
 memoryCompact = memoryFor True
-
-disk, diskCompact :: TaffyIO Gtk.Widget
-disk = diskFor False
-diskCompact = diskFor True
 
 clock, clockCompact :: TaffyIO Gtk.Widget
 clock = clockFor False
@@ -277,16 +272,17 @@ cpuFor compact = card "cpu-card" $ do
 memoryFor :: Bool -> TaffyIO Gtk.Widget
 memoryFor compact = card "memory-card" $ memoryWidget compact
 
-diskFor :: Bool -> TaffyIO Gtk.Widget
-diskFor compact =
+-- Free space shows only in the tooltip, keeping the card narrow.
+disk :: TaffyIO Gtk.Widget
+disk =
   card "disk-card" $
     diskUsageNewWith
       def
         { diskUsagePath = "/"
         , diskUsageIcon = "DISK"
-        , diskUsageFormat = if compact then "$usedPercent$%" else "$usedPercent$% • $availableWhole$ free"
+        , diskUsageFormat = "$usedPercent$%"
         , diskUsageTooltipFormat =
-            Just "$path$: $used$ / $total$ used\n$available$ available\nClick to refresh"
+            Just "root: $used$ / $total$ used\n$available$ available\nClick to refresh"
         }
 
 network :: TaffyIO Gtk.Widget
