@@ -181,7 +181,7 @@ myManageHook =
     myIgnoreClass = ["trayer"]
     myHideIgnoreClass = ["Blueman-applet"]
     myCenterFloatClass =
-      ["Blueman-manager", "zoom", "Pavucontrol", "SimpleScreenRecorder", "wezterm_filechooser"]
+      ["Blueman-manager", "zoom", "Pavucontrol", "SimpleScreenRecorder", "wezterm_filechooser", "feh"]
     myCenterFloatTitle = ["tmux-Scratchpad", "flameshot"]
     myCenterFloatTitleReg = []
     myFullFloatClass = ["MPlayer", "mpv", "steam_app_.*"]
