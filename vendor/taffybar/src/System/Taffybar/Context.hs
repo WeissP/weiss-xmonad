@@ -697,6 +697,13 @@ buildBarWindow context barConfig = do
 
   window <- Gtk.windowNew Gtk.WindowTypeToplevel
 
+  -- Under a compositor, an RGBA visual lets CSS make the bar background
+  -- transparent. Without one, transparent pixels would render black.
+  screen <- Gtk.widgetGetScreen window
+  composited <- GI.Gdk.screenIsComposited screen
+  when composited $
+    GI.Gdk.screenGetRgbaVisual screen >>= Gtk.widgetSetVisual window
+
   mapM_ (widgetSetClassGI window) $ barCssClasses barConfig
 
   void $ Gtk.onWidgetDestroy window $ do

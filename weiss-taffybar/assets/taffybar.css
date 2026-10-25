@@ -14,10 +14,13 @@
   color: @bar-fg;
 }
 
+/* No bar background: the cards float over the desktop. Transparency needs a
+   compositor; without one the window falls back to an opaque background. */
+window.weiss-bar { background-color: transparent; }
+
 .weiss-bar .taffy-box {
-  background-color: @bar-bg;
-  border: 1px solid #333b50;
-  border-radius: 12px;
+  background-color: transparent;
+  border: none;
   padding: 0 6px;
 }
 
@@ -124,20 +127,13 @@
   font-size: 9pt;
 }
 
-.weiss-bar .clock-card .contents {
-  background-color: transparent;
-  border-radius: 0;
-  padding: 0 6px;
-}
+.weiss-bar .clock-card .contents { padding: 0 9px; }
 .weiss-bar .clock-card label {
   font-size: 10pt;
   letter-spacing: 0.5px;
 }
 
-.weiss-bar .tray-card .contents {
-  background-color: transparent;
-  padding: 0 2px;
-}
+.weiss-bar .tray-card .contents { padding: 0 6px; }
 
 .weiss-bar .auto-size-image { padding: 1px 0; }
 .weiss-bar .sni-tray { padding: 0; }
