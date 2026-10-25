@@ -73,7 +73,7 @@ profileBars profile = case profile of
     ,
       ( "DisplayPort-2" -- right, portrait
       , defBar
-          { startWidgets = [clock]
+          { startWidgets = [clock, media]
           , centerWidgets = []
           , endWidgets = [network, tray]
           }
