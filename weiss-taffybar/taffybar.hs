@@ -112,7 +112,11 @@ defBar =
     { barCssClasses = ["weiss-bar"]
     , barPosition = Top
     , barPadding = 4
-    , barHeight = ExactSize 28
+    , -- A floor, not a cap: GTK grows the window to fit its contents. Keep it
+      -- at least the tallest content (the workspace groups) so a media card
+      -- appearing or changing can't resize the bar, which moves the strut and
+      -- re-tiles (and animates) every window on that screen.
+      barHeight = ExactSize 31
     , widgetSpacing = 6
     }
 

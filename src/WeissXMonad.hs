@@ -160,6 +160,12 @@ myManageHook =
     <> composeAll
       ( concat
           [ [isDialog --> doFloat]
+          , -- Docks are unmanaged, so XMonad never restacks them, and it does
+            -- not raise a window that goes fullscreen. Taffybar lowers its own
+            -- bars, but from a second X connection that can race the window's
+            -- creation, leaving a bar above fullscreen windows. Lower docks
+            -- here too, once they exist on the server.
+            [checkDock --> doLower]
           , -- , [className =? "vivaldi-stable" --> doShift "览"]
             [className =? "Mattermost" --> doShift "聊2"]
           , [className =? "p3x-onenote" --> doShift "记3"]
