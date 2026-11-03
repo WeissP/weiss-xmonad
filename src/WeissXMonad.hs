@@ -4,6 +4,7 @@
 module WeissXMonad (runXmonad, module XMonad) where
 
 import Config
+import Control.Monad (filterM)
 import Data.List
 import Data.Maybe
 import Text.Regex
@@ -193,6 +194,14 @@ myManageHook =
     myFullFloatClass = ["MPlayer", "mpv", "steam_app_.*"]
     netName = stringProperty "_NET_WM_NAME"
 
+-- The manage hook only lowers docks as they are mapped. Bars that already
+-- exist when XMonad starts or restarts keep whatever stacking they had, so
+-- lower them here too.
+lowerDocks :: X ()
+lowerDocks = withDisplay $ \dpy -> do
+  (_, _, ws) <- io . queryTree dpy =<< asks theRoot
+  filterM (runQuery checkDock) ws >>= mapM_ (io . lowerWindow dpy)
+
 myConfig =
   def
     { modMask = myModMask
@@ -205,7 +214,7 @@ myConfig =
     , normalBorderColor = myNormColor
     , focusedBorderColor = myFocusColor
     , -- return () to avoid infinite mutual recursion
-      startupHook = publishNumberedFamilyOrder >> checkKeymap myConfig myKeys >> scratchpadsExclusives >> spawn "sleep 10s && systemctl --user start autostart.target"
+      startupHook = publishNumberedFamilyOrder >> lowerDocks >> checkKeymap myConfig myKeys >> scratchpadsExclusives >> spawn "sleep 10s && systemctl --user start autostart.target"
     , handleEventHook = handleEventHook def <> handleTimerEvent
     , focusFollowsMouse = True
     }
